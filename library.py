@@ -1,11 +1,13 @@
+#!/usr/bin/env python3
+
 import collections
 import os
 import sys
 
-from common.datatypes import LDResolve, LibraryArchive
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 from elftools.elf.dynamic import DynamicSection
+from common.datatypes import LDResolve, LibraryArchive
 
 
 class Library:
@@ -32,17 +34,18 @@ class Library:
 
         for section in self.elffile.iter_sections():
             if isinstance(section, SymbolTableSection):
-                for nsym, symbol in enumerate(section.iter_symbols()):
+                for _, symbol in enumerate(section.iter_symbols()):
                     shndx = symbol['st_shndx']
                     symbol_type = symbol['st_info']['type']
                     if symbol_type != 'STT_FUNC':
-                    # TODO: check for use of LOOS/IFUNC wrt libc symbols like
-                    # memcpy... consider adding the following to the if check:
-                    # and symbol_type != 'STT_LOOS': 
+                        # TODO: check for use of LOOS/IFUNC wrt libc symbols
+                        # like memcpy... consider adding the following to the
+                        # if check:
+                        # and symbol_type != 'STT_LOOS':
                         continue
 
                     if shndx == 'SHN_UNDEF':
-                        undefs[symbol.name] = symbol 
+                        undefs[symbol.name] = symbol
                     else:
                         exports[symbol.name] = symbol
 
@@ -76,19 +79,19 @@ if __name__ == '__main__':
     while worklist:
         current_lib = worklist.pop()
         current_lib.parse_functions()
-        
-        for needed in current_lib.needed_libs:
-            for path in resolver.get_paths(needed):
+
+        for needed_lib in current_lib.needed_libs:
+            for path in resolver.get_paths(needed_lib):
                 # Check if we already processed the target and skip it
                 if path in cache:
                     continue
-                
+
                 # Find the matching library, add it to the worklist
                 target = Library(path)
                 if current_lib.ei_class == target.ei_class and \
                         current_lib.machine == target.machine:
                     worklist.append(target)
-                    current_lib.libmap[needed] = target
+                    current_lib.libmap[needed_lib] = target
 
         cache.add_library(current_lib.fullname, current_lib)
 
