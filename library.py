@@ -63,11 +63,15 @@ class Library:
                 if tag.entry.d_tag == 'DT_NEEDED':
                     needed[tag.needed] = None
                 elif tag.entry.d_tag == 'DT_RPATH':
-                    #TODO: RPATH vs. RUNPATH
-                    #TODO: RPATH gets passed down
+                    #TODO: RPATH gets passed down, RUNPATH doesn't
                     rpaths = [rpath.replace("$ORIGIN",
                                             os.path.dirname(self.fullname))
                               for rpath in tag.rpath.split(',')]
+                elif tag.entry.d_tag == 'DT_RUNPATH':
+                    #TODO only evaluate DT_RPATH if DT_RUNPATH does not exist
+                    rpaths = [rpath.replace("$ORIGIN",
+                                            os.path.dirname(self.fullname))
+                              for rpath in tag.runpath.split(',')]
 
         return needed, rpaths
 
