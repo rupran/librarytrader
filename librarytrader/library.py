@@ -13,21 +13,21 @@ class Library:
 
         self.fullname = filename
 
-        self.fd = open(filename, 'rb')
-        self.elffile = ELFFile(self.fd)
-        self.elfheader = self.elffile.header
+        self._fd = open(filename, 'rb')
+        self._elffile = ELFFile(self._fd)
+        self._elfheader = self._elffile.header
 
-        self.exported_functions = None
-        self.undefs = None
+        self.exports = None
+        self.imports = None
 
         self.needed_libs = None
         self.rpaths = None
 
     def parse_symtab(self):
         exports = collections.OrderedDict()
-        undefs = collections.OrderedDict()
+        imports = collections.OrderedDict()
 
-        for section in self.elffile.iter_sections():
+        for section in self._elffile.iter_sections():
             if isinstance(section, SymbolTableSection):
                 for _, symbol in enumerate(section.iter_symbols()):
                     shndx = symbol['st_shndx']
@@ -40,16 +40,16 @@ class Library:
                         continue
 
                     if shndx == 'SHN_UNDEF':
-                        undefs[symbol.name] = None
+                        imports[symbol.name] = None
                     else:
                         exports[symbol.name] = None
 
-        return exports, undefs
+        return exports, imports
 
     def parse_dynamic(self):
         needed = {}
         rpaths = []
-        for section in self.elffile.iter_sections():
+        for section in self._elffile.iter_sections():
             if not isinstance(section, DynamicSection):
                 continue
             for tag in section.iter_tags():
@@ -68,16 +68,18 @@ class Library:
 
         return needed, rpaths
 
-    def parse_functions(self):
-        self.exported_functions, self.undefs = self.parse_symtab()
+    def parse_functions(self, release=False):
+        self.exports, self.imports = self.parse_symtab()
         self.needed_libs, self.rpaths = self.parse_dynamic()
+        if release:
+            self._release_elffile()
 
-    def release_elffile(self):
-        del self.elffile
-        self.fd.close()
+    def _release_elffile(self):
+        del self._elffile
+        self._fd.close()
 
     def is_compatible(self, other):
-        hdr = self.elfheader
-        o_hdr = other.elfheader
+        hdr = self._elfheader
+        o_hdr = other._elfheader
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']

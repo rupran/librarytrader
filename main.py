@@ -3,7 +3,7 @@
 import os
 import sys
 
-from librarytrader.container import LibraryArchive
+from librarytrader.container import LibraryStore
 
 def parse_arguments():
     paths = []
@@ -18,18 +18,18 @@ def parse_arguments():
 
 if __name__ == '__main__':
 
-    libbox = LibraryArchive()
+    store = LibraryStore()
     paths = parse_arguments()
 
     for path in paths:
         print("Processing {}".format(path), file=sys.stderr)
 
-        libbox.resolve_libs_recursive_by_path(path)
+        store.resolve_libs_recursive_by_path(path)
 
-    print(len(libbox))
+    print(len(store))
 
-#    lib = libbox[paths[0]]
+#    lib = store[paths[0]]
 #    if lib:
-#        resolved = libbox.resolve_functions(lib)
+#        resolved = store.resolve_functions(lib)
 #        for key, value in resolved.items():
 #            print("Found {} in {}".format(key, value))

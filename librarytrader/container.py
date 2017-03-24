@@ -9,10 +9,10 @@ from librarytrader.common.datatypes import BaseStore
 from librarytrader.library import Library
 
 
-class LibraryArchive(BaseStore):
+class LibraryStore(BaseStore):
 
     def __init__(self):
-        super(LibraryArchive, self).__init__()
+        super(LibraryStore, self).__init__()
         self.resolver = LDResolve()
 
     def __getitem__(self, key):
@@ -70,8 +70,7 @@ class LibraryArchive(BaseStore):
         if library.fullname in self:
             return
 
-        library.parse_functions()
-        library.release_elffile()
+        library.parse_functions(release=True)
 
         filename = library.fullname
         # Add ourselves before processing children
@@ -112,10 +111,10 @@ class LibraryArchive(BaseStore):
 
         result = collections.OrderedDict()
 
-        for function in library.undefs:
+        for function in library.imports:
             found = False
             for _, imp_lib in library.needed_libs.items():
-                if function in self[imp_lib].exported_functions:
+                if function in self[imp_lib].exports:
                     result[function] = imp_lib
                     found = True
                     break
