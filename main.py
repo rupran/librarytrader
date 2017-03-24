@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import logging
 import os
 import sys
 
@@ -19,11 +20,13 @@ def parse_arguments():
 
 if __name__ == '__main__':
 
+    logging.basicConfig(level=logging.INFO)
+
     store = LibraryStore()
     paths = parse_arguments()
 
     for path in paths:
-        print("Processing {}".format(path), file=sys.stderr)
+        logging.info("Processing {}".format(path))
 
         store.resolve_libs_recursive_by_path(path)
 

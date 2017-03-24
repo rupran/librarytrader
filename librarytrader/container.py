@@ -1,4 +1,5 @@
 import collections
+import logging
 import os
 import re
 import sys
@@ -31,7 +32,7 @@ class LibraryStore(BaseStore):
         try:
             return Library(path)
         except (ELFError, FileNotFoundError) as err:
-            print("ERR: {} => {}".format(path, err), file=sys.stderr)
+            logging.error("'{}' => {}".format(path, err))
             return None
 
     def get_library(self, path):
@@ -120,7 +121,7 @@ class LibraryStore(BaseStore):
                     break
             if not found:
                 # TODO: consider symbol versioning?
-                print('Did not find {}'.format(function))
+                logging.warning('Did not find {}'.format(function))
 
         return result
 
@@ -144,8 +145,7 @@ class LDResolve(BaseStore):
                 else:
                     self[libname] = [fullpath]
             else:
-                print("WARN: ill-formed line '{}'".format(line),
-                      file=sys.stderr)
+                logging.warning("ill-formed line '{}'".format(line))
 
     def get_paths(self, libname, rpaths):
         retval = []
@@ -161,10 +161,9 @@ class LDResolve(BaseStore):
         # ld.so.cache lookup
         ldsocache = self.get(libname, [])
         if not ldsocache:
-            print("WARN: ldconfig doesn't know {}...".format(libname),
-                  file=sys.stderr)
+            logging.warning("ldconfig doesn't know {}...".format(libname))
         retval.extend(ldsocache)
 
         if not retval:
-            print("WARN: really returning nothing...", file=sys.stderr)
+            logging.warning("no file for '{}'...".format(libname))
         return retval
