@@ -148,12 +148,23 @@ class LDResolve(BaseStore):
                       file=sys.stderr)
 
     def get_paths(self, libname, rpaths):
-        retval = self.get(libname, [])
-        if not retval:
+        retval = []
+
+        # Check rpaths first
+        if rpaths:
+            for rpath in rpaths:
+                fullpath = os.path.abspath(os.path.join(rpath, libname))
+                if not os.path.isfile(fullpath):
+                    continue
+                retval.append(fullpath)
+
+        # ld.so.cache lookup
+        ldsocache = self.get(libname, [])
+        if not ldsocache:
             print("WARN: ldconfig doesn't know {}...".format(libname),
                   file=sys.stderr)
-            for rpath in rpaths:
-                retval.append(os.path.abspath(os.path.join(rpath, libname)))
+        retval.extend(ldsocache)
+
         if not retval:
             print("WARN: really returning nothing...", file=sys.stderr)
         return retval
