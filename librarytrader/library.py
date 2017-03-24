@@ -59,12 +59,12 @@ class Library:
                     #TODO: RPATH gets passed down, RUNPATH doesn't
                     rpaths = [rpath.replace("$ORIGIN",
                                             os.path.dirname(self.fullname))
-                              for rpath in tag.rpath.split(',')]
+                              for rpath in tag.rpath.split(':')]
                 elif tag.entry.d_tag == 'DT_RUNPATH':
                     #TODO only evaluate DT_RPATH if DT_RUNPATH does not exist
                     rpaths = [rpath.replace("$ORIGIN",
                                             os.path.dirname(self.fullname))
-                              for rpath in tag.runpath.split(',')]
+                              for rpath in tag.runpath.split(':')]
 
         return needed, rpaths
 
