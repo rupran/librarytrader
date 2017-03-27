@@ -66,44 +66,40 @@ class LibraryStore(BaseStore):
                     # We found the compatible one, continue with next needed lib
                     break
 
-    def _resolve_libs(self, library, callback=None):
-        # We were already here once, no need to go further
-        if library.fullname in self:
+    def _resolve_libs(self, library, path="", callback=None):
+        if not library:
+            library = self.create_library(path)
+
+        if not library or library.fullname in self:
+            # We had an error or were already here once, no need to go further
             return
 
         library.parse_functions(release=True)
 
+        # Check for symlink, add redirection and set name to target of symlink
         filename = library.fullname
-        # Add ourselves before processing children
         if os.path.islink(filename):
             target = os.path.realpath(library.fullname)
 
             self.add_library(filename, target)
             library.fullname = target
 
+        # Add ourselves before processing children
         self.add_library(library.fullname, library)
 
         self._find_compatible_libs(library, callback)
 
-    def resolve_libs_single(self, library):
-        self._resolve_libs(library)
+    def resolve_libs_single(self, library, path=""):
+        self._resolve_libs(library, path)
 
     def resolve_libs_single_by_path(self, path):
-        library = self.create_library(path)
-        if not library:
-            return
-        else:
-            self.resolve_libs_single(library)
+        self.resolve_libs_single(None, path)
 
-    def resolve_libs_recursive(self, library):
-        self._resolve_libs(library, callback=self.resolve_libs_recursive)
+    def resolve_libs_recursive(self, library, path=""):
+        self._resolve_libs(library, path, callback=self.resolve_libs_recursive)
 
     def resolve_libs_recursive_by_path(self, path):
-        library = self.create_library(path)
-        if not library:
-            return
-        else:
-            self.resolve_libs_recursive(library)
+        self.resolve_libs_recursive(None, path)
 
     def resolve_functions(self, library):
         if library.fullname not in self:
