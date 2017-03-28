@@ -1,4 +1,4 @@
-class BaseStore:
+class BaseStore(object):
 
     def __init__(self):
         self.storage = {}
