@@ -41,7 +41,12 @@ encountered and store their imported and exported function names as keys in the
 `Library` object yourself but rather access that information from the
 `LibraryStore` later.
 
-After evaluating the dependency tree, calling `resolve_functions(elf)` on
-`LibraryStore` will (try to) resolve all imported functions to the absolute
-paths of the library which provides the functions. The mapping is returned as an
-`OrderedDict`.
+You can use the `dump` method to export the current state of a `LibraryStore`
+into a JSON file with a given filename, and the `load` method to fill an
+existing `LibraryStore` from previously exported data. Note that `load`ing
+currently clears any content the `LibraryStore` might hold.
+
+After evaluating or loading the dependency tree, calling
+`resolve_functions(elf)` on `LibraryStore` will (try to) resolve all imported
+functions to the absolute paths of the library which provides the functions. The
+mapping is returned as an `OrderedDict`.
