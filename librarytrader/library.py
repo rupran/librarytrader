@@ -7,15 +7,16 @@ from elftools.elf.sections import SymbolTableSection
 
 class Library:
 
-    def __init__(self, filename):
+    def __init__(self, filename, load_elffile=True):
         if not os.path.isabs(filename):
             raise ValueError("{} is no absolute path".format(filename))
 
         self.fullname = filename
 
-        self._fd = open(filename, 'rb')
-        self._elffile = ELFFile(self._fd)
-        self._elfheader = self._elffile.header
+        if load_elffile:
+            self._fd = open(filename, 'rb')
+            self._elffile = ELFFile(self._fd)
+            self._elfheader = self._elffile.header
 
         self.exports = None
         self.imports = None

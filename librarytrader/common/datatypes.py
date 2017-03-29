@@ -24,6 +24,9 @@ class BaseStore(object):
         else:
             return default
 
+    def items(self):
+        return self.storage.items()
+
     def reset(self):
         del self.storage
         self.storage = {}

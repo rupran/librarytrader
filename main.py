@@ -10,12 +10,16 @@ from librarytrader.container import LibraryStore
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Evaluate imports and ' \
         'exports of .so libraries and ELF executables.')
-    parser.add_argument('paths', type=str, nargs='+',
+    parser.add_argument('paths', type=str, nargs='*',
                         help='the paths to process')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='verbose output')
     parser.add_argument('--debug', action='store_true',
                         help=argparse.SUPPRESS)
+    parser.add_argument('-l', '--load', action='store',
+                        help='JSON file to load previously exported mapping')
+    parser.add_argument('-s', '--store', action='store',
+                        help='Store calculated mapping to JSON file')
     args = parser.parse_args()
 
     loglevel = logging.WARNING
@@ -26,6 +30,9 @@ def parse_arguments():
 
     logging.basicConfig(level=loglevel)
 
+    return args
+
+def get_paths(args):
     paths = []
     for path in args.paths:
         if os.path.isdir(path):
@@ -40,18 +47,27 @@ def parse_arguments():
 if __name__ == '__main__':
 
     store = LibraryStore()
-    paths = parse_arguments()
 
-    logging.info('Processing {} paths in total'.format(len(paths)))
+    args = parse_arguments()
+    if args.load:
+        store.load(args.load)
+    elif not args.paths:
+        logging.error('Either import results or provide paths to analyze')
+        sys.exit(1)
+    else:
+        paths = get_paths(args)
 
-    for path in paths:
-        logging.info('Processing {}'.format(path))
+        logging.info('Processing {} paths in total'.format(len(paths)))
 
-        store.resolve_libs_recursive_by_path(path)
+        for path in paths:
+            logging.info('Processing {}'.format(path))
 
-    logging.info(len(store))
+            store.resolve_libs_recursive_by_path(path)
 
-    print(len(store))
+    logging.info('Number of entries: {}'.format(len(store)))
+
+    if args.store:
+        store.dump(args.store)
 #    lib = store[paths[0]]
 #    if lib:
 #        resolved = store.resolve_functions(lib)

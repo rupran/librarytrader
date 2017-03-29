@@ -1,4 +1,5 @@
 import collections
+import json
 import logging
 import os
 import re
@@ -15,9 +16,6 @@ class LibraryStore(BaseStore):
     def __init__(self):
         super(LibraryStore, self).__init__()
         self.resolver = LDResolve()
-
-    def __getitem__(self, key):
-        return self.get_library(key)
 
     def create_library(self, path):
         if path in self:
@@ -49,7 +47,7 @@ class LibraryStore(BaseStore):
         for needed_name in target.needed_libs:
             for path in self.resolver.get_paths(needed_name, target.rpaths):
                 if path in self:
-                    needed = self[path]
+                    needed = self.get_library(path)
                 else:
                     needed = self.create_library(path)
                     if not needed:
@@ -121,6 +119,48 @@ class LibraryStore(BaseStore):
 
         return result
 
+    def dump(self, output_file):
+        logging.debug('Saving results to \'{}\''.format(output_file))
+
+        output = {}
+        for key, value in self.items():
+            lib_dict = {}
+            if isinstance(value, str):
+                lib_dict["type"] = "link"
+                lib_dict["target"] = value
+            else:
+                lib_dict["type"] = "library"
+                #TODO: json does not keep order of OrderedDicts... relevant?
+                lib_dict["imports"] = value.imports
+                lib_dict["exports"] = value.exports
+                lib_dict["needed_libs"] = value.needed_libs
+                lib_dict["rpaths"] = value.rpaths
+
+            output[key] = lib_dict
+
+        with open(output_file, 'w') as outfd:
+            json.dump(output, outfd)
+
+    def load(self, input_file):
+        self.reset()
+
+        logging.debug('loading input from \'{}\'...'.format(input_file))
+        with open(input_file, 'r') as infd:
+            in_dict = json.load(infd)
+            for key, value in in_dict.items():
+                logging.debug("loading {} -> {}".format(key, value["type"]))
+                if value["type"] == "link":
+                    self.add_library(key, value["target"])
+                else:
+                    library = Library(key, load_elffile=False)
+                    library.imports = value["imports"]
+                    library.exports = value["exports"]
+                    library.needed_libs = value["needed_libs"]
+                    library.rpaths = value["rpaths"]
+                    self.add_library(key, library)
+
+        logging.debug('... done with {} entries'.format(len(self)))
+ 
 
 class LDResolve(BaseStore):
 
