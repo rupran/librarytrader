@@ -109,7 +109,7 @@ class LibraryStore(BaseStore):
         for function in library.imports:
             found = False
             for _, imp_lib in library.needed_libs.items():
-                if function in self[imp_lib].exports:
+                if function in self.get_library(imp_lib).exports:
                     result[function] = imp_lib
                     found = True
                     break
@@ -160,7 +160,7 @@ class LibraryStore(BaseStore):
                     self.add_library(key, library)
 
         logging.debug('... done with {} entries'.format(len(self)))
- 
+
 
 class LDResolve(BaseStore):
 
