@@ -49,20 +49,21 @@ if __name__ == '__main__':
     store = LibraryStore()
 
     args = parse_arguments()
+
     if args.load:
         store.load(args.load)
     elif not args.paths:
-        logging.error('Either import results or provide paths to analyze')
+        logging.error('Please import results and/or provide paths to analyze')
         sys.exit(1)
-    else:
-        paths = get_paths(args)
 
-        logging.info('Processing {} paths in total'.format(len(paths)))
+    paths = get_paths(args)
 
-        for path in paths:
-            logging.info('Processing {}'.format(path))
+    logging.info('Processing {} paths in total'.format(len(paths)))
 
-            store.resolve_libs_recursive_by_path(path)
+    for path in paths:
+        logging.info('Processing {}'.format(path))
+
+        store.resolve_libs_recursive_by_path(path)
 
     logging.info('Number of entries: {}'.format(len(store)))
 
