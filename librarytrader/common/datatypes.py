@@ -24,6 +24,12 @@ class BaseStore(object):
         else:
             return default
 
+    def keys(self):
+        return self.storage.keys()
+
+    def values(self):
+        return self.storage.values()
+
     def items(self):
         return self.storage.items()
 

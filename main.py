@@ -68,8 +68,12 @@ if __name__ == '__main__':
 
     if args.store:
         store.dump(args.store)
-#    lib = store[paths[0]]
-#    if lib:
-#        resolved = store.resolve_functions(lib)
-#        for key, value in resolved.items():
-#            print("Found {} in {}".format(key, value))
+
+    # Demonstration for resolving
+    lst = list(store.keys())
+    lib = store.get_library(lst[0])
+
+    print('Resolving functions in {}'.format(lst[0]))
+    resolved = store.resolve_functions(lib)
+    for key, value in resolved.items():
+        print("Found {} in {}".format(key, value))
