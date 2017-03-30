@@ -46,12 +46,10 @@ class LibraryStore(BaseStore):
     def _find_compatible_libs(self, target, callback):
         for needed_name in target.needed_libs:
             for path in self.resolver.get_paths(needed_name, target.rpaths):
-                if path in self:
-                    needed = self.get_library(path)
-                else:
-                    needed = self.create_library(path)
-                    if not needed:
-                        continue
+                # create has an implicit get if we already processed 'path'
+                needed = self.create_library(path)
+                if not needed:
+                    continue
 
                 if target.is_compatible(needed):
                     # Enter full path in origin
