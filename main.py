@@ -36,12 +36,11 @@ def get_paths(args):
     paths = []
     for path in args.paths:
         if os.path.isdir(path):
-            paths.extend([os.path.realpath(os.path.join(os.path.abspath(path),
-                                                        entry.name))
+            paths.extend([os.path.join(os.path.abspath(path), entry.name)
                           for entry in os.scandir(path)
                           if entry.is_file()])
         else:
-            paths.append(os.path.realpath(path))
+            paths.append(path)
     return paths
 
 if __name__ == '__main__':

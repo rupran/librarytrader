@@ -19,7 +19,7 @@ class LibraryStore(BaseStore):
 
     def create_library(self, path):
         if path in self:
-            return self[path]
+            return self.get_library(path)
 
         if os.path.islink(path):
             target = os.path.realpath(path)
@@ -100,6 +100,13 @@ class LibraryStore(BaseStore):
         self.resolve_libs_recursive(None, path)
 
     def resolve_functions(self, library):
+        if isinstance(library, str):
+            name = library
+            library = self.get_library(library)
+            if library is None:
+                logging.error('Did not find library \'{}\''.format(name))
+                return
+
         if library.fullname not in self:
             #TODO: self.resolve_libs_recursive(library)?
             raise ValueError(library.fullname)
