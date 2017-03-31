@@ -1,4 +1,21 @@
 #!/usr/bin/env python3
+#
+# Copyright 2017, Andreas Ziegler <andreas.ziegler@fau.de>
+#
+# This file is part of librarytrader.
+#
+# librarytrader is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# librarytrader is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
 import logging
@@ -33,41 +50,38 @@ def parse_arguments():
     return args
 
 def get_paths(args):
-    paths = []
-    for path in args.paths:
-        if os.path.isdir(path):
-            paths.extend([os.path.join(os.path.abspath(path), entry.name)
-                          for entry in os.scandir(path)
-                          if entry.is_file()])
+    result = []
+    for arg in args.paths:
+        if os.path.isdir(arg):
+            result.extend([os.path.join(os.path.abspath(arg), entry.name)
+                           for entry in os.scandir(arg)
+                           if entry.is_file()])
         else:
-            paths.append(path)
-    return paths
+            result.append(arg)
+    return result
 
 if __name__ == '__main__':
 
+    arguments = parse_arguments()
     store = LibraryStore()
 
-    args = parse_arguments()
-
-    if args.load:
-        store.load(args.load)
-    elif not args.paths:
+    if arguments.load:
+        store.load(arguments.load)
+    elif not arguments.paths:
         logging.error('Please import results and/or provide paths to analyze')
         sys.exit(1)
 
-    paths = get_paths(args)
-
-    logging.info('Processing {} paths in total'.format(len(paths)))
+    paths = get_paths(arguments)
+    logging.info('Processing %d paths in total', len(paths))
 
     for path in paths:
-        logging.info('Processing {}'.format(path))
-
+        logging.info('Processing %s', path)
         store.resolve_libs_recursive_by_path(path)
 
-    logging.info('Number of entries: {}'.format(len(store)))
+    logging.info('Number of entries: %d', len(store))
 
-    if args.store:
-        store.dump(args.store)
+    if arguments.store:
+        store.dump(arguments.store)
 
     # Demonstration for resolving
     lst = list(store.keys())

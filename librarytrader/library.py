@@ -1,3 +1,20 @@
+# Copyright 2017, Andreas Ziegler <andreas.ziegler@fau.de>
+#
+# This file is part of librarytrader.
+#
+# librarytrader is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# librarytrader is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
+
 import collections
 import os
 
@@ -16,7 +33,7 @@ class Library:
         if load_elffile:
             self._fd = open(filename, 'rb')
             self._elffile = ELFFile(self._fd)
-            self._elfheader = self._elffile.header
+            self.elfheader = self._elffile.header
 
         self.exports = None
         self.imports = None
@@ -80,7 +97,7 @@ class Library:
         self._fd.close()
 
     def is_compatible(self, other):
-        hdr = self._elfheader
-        o_hdr = other._elfheader
+        hdr = self.elfheader
+        o_hdr = other.elfheader
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']

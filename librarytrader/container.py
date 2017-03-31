@@ -1,9 +1,25 @@
+# Copyright 2017, Andreas Ziegler <andreas.ziegler@fau.de>
+#
+# This file is part of librarytrader.
+#
+# librarytrader is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# librarytrader is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
+
 import collections
 import json
 import logging
 import os
 import re
-import sys
 
 from elftools.common.exceptions import ELFError
 
@@ -30,7 +46,7 @@ class LibraryStore(BaseStore):
         try:
             return Library(path)
         except (ELFError, FileNotFoundError) as err:
-            logging.error("'{}' => {}".format(path, err))
+            logging.error('\'%s\' => %s', path, err)
             return None
 
     def get_library(self, path):
@@ -102,7 +118,7 @@ class LibraryStore(BaseStore):
             name = library
             library = self.get_library(library)
             if library is None:
-                logging.error('Did not find library \'{}\''.format(name))
+                logging.error('Did not find library \'%s\'', name)
                 return
 
         if library.fullname not in self:
@@ -120,12 +136,12 @@ class LibraryStore(BaseStore):
                     break
             if not found:
                 # TODO: consider symbol versioning?
-                logging.warning('Did not find {}'.format(function))
+                logging.warning('Did not find %s', function)
 
         return result
 
     def dump(self, output_file):
-        logging.debug('Saving results to \'{}\''.format(output_file))
+        logging.debug('Saving results to \'%s\'', output_file)
 
         output = {}
         for key, value in self.items():
@@ -149,11 +165,11 @@ class LibraryStore(BaseStore):
     def load(self, input_file):
         self.reset()
 
-        logging.debug('loading input from \'{}\'...'.format(input_file))
+        logging.debug('loading input from \'%s\'...', input_file)
         with open(input_file, 'r') as infd:
             in_dict = json.load(infd)
             for key, value in in_dict.items():
-                logging.debug("loading {} -> {}".format(key, value["type"]))
+                logging.debug("loading %s -> %s", key, value["type"])
                 if value["type"] == "link":
                     self.add_library(key, value["target"])
                 else:
@@ -164,7 +180,7 @@ class LibraryStore(BaseStore):
                     library.rpaths = value["rpaths"]
                     self.add_library(key, library)
 
-        logging.debug('... done with {} entries'.format(len(self)))
+        logging.debug('... done with %s entries', len(self))
 
 
 class LDResolve(BaseStore):
@@ -186,7 +202,7 @@ class LDResolve(BaseStore):
                 else:
                     self[libname] = [fullpath]
             else:
-                logging.warning("ill-formed line '{}'".format(line))
+                logging.warning("ill-formed line '%s'", line)
 
     def get_paths(self, libname, rpaths):
         retval = []
@@ -202,9 +218,9 @@ class LDResolve(BaseStore):
         # ld.so.cache lookup
         ldsocache = self.get(libname, [])
         if not ldsocache:
-            logging.warning("ldconfig doesn't know {}...".format(libname))
+            logging.warning("ldconfig doesn't know %s...", libname)
         retval.extend(ldsocache)
 
         if not retval:
-            logging.warning("no file for '{}'...".format(libname))
+            logging.warning("no file for '%s'...", libname)
         return retval
