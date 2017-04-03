@@ -185,14 +185,19 @@ class LibraryStore(BaseStore):
 
 class LDResolve(BaseStore):
 
-    def __init__(self):
+    def __init__(self, from_file=None):
         super(LDResolve, self).__init__()
-        self.reload()
+        self.reload(from_file)
 
-    def reload(self):
+    def reload(self, from_file):
         self.reset()
-        lines = os.popen('/sbin/ldconfig -p')
-        for line in lines.readlines()[1:]:
+
+        if from_file:
+            lines = open(from_file, 'r')
+        else:
+            lines = os.popen('/sbin/ldconfig -p')
+
+        for line in lines:
             line = line.strip()
             match = re.match(r'(\S+)\s+\((.+)\)\s+=>\ (.+)$', line)
             if match:
@@ -202,7 +207,12 @@ class LDResolve(BaseStore):
                 else:
                     self[libname] = [fullpath]
             else:
-                logging.warning("ill-formed line '%s'", line)
+                logging.info('ill-formed line \'%s\'', line)
+
+        if not len(self):
+            logging.error('ldconfig info is missing!')
+        else:
+            logging.debug('Loaded %d entries from ldconfig', len(self))
 
     def get_paths(self, libname, rpaths):
         retval = []
