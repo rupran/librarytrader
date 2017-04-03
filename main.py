@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
     # Demonstration for resolving
     lst = list(store.keys())
-    lib = store.get_library(lst[0])
+    lib = store.get_from_path(lst[0])
 
     print('Resolving functions in {}'.format(lst[0]))
     resolved = store.resolve_functions(lib)

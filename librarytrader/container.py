@@ -33,14 +33,14 @@ class LibraryStore(BaseStore):
         super(LibraryStore, self).__init__()
         self.resolver = LDResolve()
 
-    def create_library(self, path):
+    def _get_or_create_library(self, path):
         if path in self:
-            return self.get_library(path)
+            return self.get_from_path(path)
 
         if os.path.islink(path):
             target = os.path.realpath(path)
             if target in self:
-                self.add_library(path, target)
+                self._add_library(path, target)
                 return self[target]
 
         try:
@@ -49,21 +49,20 @@ class LibraryStore(BaseStore):
             logging.error('\'%s\' => %s', path, err)
             return None
 
-    def get_library(self, path):
+    def get_from_path(self, path):
         result = self.get(path)
         # Symlink-like behaviour with strings
         while isinstance(result, str):
             result = self.get(result)
         return result
 
-    def add_library(self, path, library):
+    def _add_library(self, path, library):
         self[path] = library
 
     def _find_compatible_libs(self, target, callback):
         for needed_name in target.needed_libs:
             for path in self.resolver.get_paths(needed_name, target.rpaths):
-                # create has an implicit get if we already processed 'path'
-                needed = self.create_library(path)
+                needed = self._get_or_create_library(path)
                 if not needed:
                     continue
 
@@ -80,7 +79,7 @@ class LibraryStore(BaseStore):
 
     def _resolve_libs(self, library, path="", callback=None):
         if not library:
-            library = self.create_library(path)
+            library = self._get_or_create_library(path)
 
         if not library or library.fullname in self:
             # We had an error or were already here once, no need to go further
@@ -93,11 +92,11 @@ class LibraryStore(BaseStore):
         if os.path.islink(filename):
             target = os.path.realpath(library.fullname)
 
-            self.add_library(filename, target)
+            self._add_library(filename, target)
             library.fullname = target
 
         # Add ourselves before processing children
-        self.add_library(library.fullname, library)
+        self._add_library(library.fullname, library)
 
         self._find_compatible_libs(library, callback)
 
@@ -116,7 +115,7 @@ class LibraryStore(BaseStore):
     def resolve_functions(self, library):
         if isinstance(library, str):
             name = library
-            library = self.get_library(library)
+            library = self.get_from_path(library)
             if library is None:
                 logging.error('Did not find library \'%s\'', name)
                 return
@@ -129,9 +128,10 @@ class LibraryStore(BaseStore):
 
         for function in library.imports:
             found = False
-            for _, imp_lib in library.needed_libs.items():
-                if function in self.get_library(imp_lib).exports:
-                    result[function] = imp_lib
+            for _, imp_lib_path in library.needed_libs.items():
+                imp_lib = self.get_from_path(imp_lib_path)
+                if function in imp_lib.exports:
+                    result[function] = imp_lib_path
                     found = True
                     break
             if not found:
@@ -171,14 +171,14 @@ class LibraryStore(BaseStore):
             for key, value in in_dict.items():
                 logging.debug("loading %s -> %s", key, value["type"])
                 if value["type"] == "link":
-                    self.add_library(key, value["target"])
+                    self._add_library(key, value["target"])
                 else:
                     library = Library(key, load_elffile=False)
                     library.imports = value["imports"]
                     library.exports = value["exports"]
                     library.needed_libs = value["needed_libs"]
                     library.rpaths = value["rpaths"]
-                    self.add_library(key, library)
+                    self._add_library(key, library)
 
         logging.debug('... done with %s entries', len(self))
 
