@@ -34,20 +34,23 @@ class LibraryStore(BaseStore):
         self.resolver = LDResolve()
 
     def _get_or_create_library(self, path):
-        if path in self:
-            return self.get_from_path(path)
+        lib = None
+        link_path = None
 
         if os.path.islink(path):
-            target = os.path.realpath(path)
-            if target in self:
-                self._add_library(path, target)
-                return self[target]
+            link_path = path
+            path = os.path.realpath(path)
+
+        if path in self:
+            lib = self.get_from_path(path)
 
         try:
-            return Library(path)
+            if not lib:
+                lib = Library(path)
+            return (lib, link_path)
         except (ELFError, FileNotFoundError) as err:
             logging.error('\'%s\' => %s', path, err)
-            return None
+            return (None, None)
 
     def get_from_path(self, path):
         result = self.get(path)
@@ -62,12 +65,15 @@ class LibraryStore(BaseStore):
     def _find_compatible_libs(self, target, callback):
         for needed_name in target.needed_libs:
             for path in self.resolver.get_paths(needed_name, target.rpaths):
-                needed = self._get_or_create_library(path)
+                needed, link_path = self._get_or_create_library(path)
                 if not needed:
                     continue
 
                 if target.is_compatible(needed):
-                    # Enter full path in origin
+                    # If path was a symlink, add link to full name to store
+                    if link_path:
+                        self._add_library(link_path, needed.fullname)
+                    # Enter full path to library for DT_NEEDED name
                     target.needed_libs[needed_name] = needed.fullname
 
                     # If we should continue processing, do the needed one next
@@ -79,25 +85,24 @@ class LibraryStore(BaseStore):
 
     def _resolve_libs(self, library, path="", callback=None):
         if not library:
-            library = self._get_or_create_library(path)
+            library, link_path = self._get_or_create_library(path)
+            if not library:
+                # We had an error, so nothing can be processed
+                return
+            elif link_path:
+                self._add_library(link_path, library.fullname)
 
-        if not library or library.fullname in self:
-            # We had an error or were already here once, no need to go further
+        if library.fullname in self:
+            # We were already here once, no need to go further
             return
 
+        # Process this library
         library.parse_functions(release=True)
 
-        # Check for symlink, add redirection and set name to target of symlink
-        filename = library.fullname
-        if os.path.islink(filename):
-            target = os.path.realpath(library.fullname)
-
-            self._add_library(filename, target)
-            library.fullname = target
-
-        # Add ourselves before processing children
+        # Add ourselves before processing imports
         self._add_library(library.fullname, library)
 
+        # Find and resolve imports
         self._find_compatible_libs(library, callback)
 
     def resolve_libs_single(self, library, path=""):
