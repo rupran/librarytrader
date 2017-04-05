@@ -50,11 +50,15 @@ class Library:
                 for _, symbol in enumerate(section.iter_symbols()):
                     shndx = symbol['st_shndx']
                     symbol_type = symbol['st_info']['type']
+                    symbol_bind = symbol['st_info']['bind']
                     if symbol_type != 'STT_FUNC':
                         # TODO: check for use of LOOS/IFUNC wrt libc symbols
                         # like memcpy... consider adding the following to the
                         # if check:
                         # and symbol_type != 'STT_LOOS':
+                        continue
+
+                    if symbol_bind == 'STB_LOCAL':
                         continue
 
                     if shndx == 'SHN_UNDEF':
