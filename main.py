@@ -93,8 +93,18 @@ class Runner():
         for key, value in resolved.items():
             print("Found {} in {}".format(key, value))
 
+    def print_needed_paths(self):
+        # Demonstration for needed paths resolution
+        libobjs = list(val for (key, val) in self.store.items() if not isinstance(val, str))
+        first = libobjs[0]
+
+        print('Needed libraries for {}'.format(first.fullname))
+
+        for name, path in first.needed_libs.items():
+            print('{} => {}'.format(name, path))
 
 if __name__ == '__main__':
     runner = Runner()
     runner.process()
+    runner.print_needed_paths()
     runner.resolve()
