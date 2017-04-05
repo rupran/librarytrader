@@ -135,13 +135,19 @@ class LibraryStore(BaseStore):
             found = False
             for _, imp_lib_path in library.needed_libs.items():
                 imp_lib = self.get_from_path(imp_lib_path)
+                if not imp_lib:
+                    logging.warning('Data for \'%s\' not available!',
+                                    imp_lib_path)
+                    continue
+
                 if function in imp_lib.exports:
                     result[function] = imp_lib_path
                     found = True
                     break
+
             if not found:
                 # TODO: consider symbol versioning?
-                logging.warning('Did not find %s', function)
+                logging.warning('Did not find function \'%s\'', function)
 
         return result
 
