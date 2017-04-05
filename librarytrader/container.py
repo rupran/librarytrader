@@ -34,20 +34,16 @@ class LibraryStore(BaseStore):
         self.resolver = LDResolve()
 
     def _get_or_create_library(self, path):
-        lib = None
         link_path = None
-
         if os.path.islink(path):
             link_path = path
             path = os.path.realpath(path)
 
         if path in self:
-            lib = self.get_from_path(path)
+            return (self.get_from_path(path), link_path)
 
         try:
-            if not lib:
-                lib = Library(path)
-            return (lib, link_path)
+            return (Library(path), link_path)
         except (ELFError, FileNotFoundError) as err:
             logging.error('\'%s\' => %s', path, err)
             return (None, None)
