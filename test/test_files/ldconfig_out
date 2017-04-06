@@ -1,0 +1,2 @@
+    libc.so.6 (libc6,x86-64, OS ABI: Linux 2.6.32) => ./test/test_files/libc.so.6
+    ld-linux-x86-64.so.2 (libc6,x86-64) => ./test/test_files/ld-linux-x86-64.so.2
