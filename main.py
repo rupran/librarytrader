@@ -44,6 +44,8 @@ class Runner():
                             help='JSON file to load previously exported mapping')
         parser.add_argument('-s', '--store', action='store',
                             help='Store calculated mapping to JSON file')
+        parser.add_argument('--single', action='store_true',
+                            help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
 
         loglevel = logging.WARNING
@@ -76,35 +78,42 @@ class Runner():
 
         for path in self.paths:
             logging.info('Processing %s', path)
-            self.store.resolve_libs_recursive_by_path(path)
+            if self.args.single:
+                self.store.resolve_libs_single_by_path(path)
+            else:
+                self.store.resolve_libs_recursive_by_path(path)
 
         logging.info('Number of entries: %d', len(self.store))
 
         if self.args.store:
             self.store.dump(self.args.store)
 
+    def print_needed_paths(self):
+        # Demonstration for needed paths resolution
+        libobjs = list(val for (key, val) in self.store.items()
+                       if not isinstance(val, str))
+        lib = libobjs[0]
+
+        print('Needed libraries for {}'.format(lib.fullname))
+        for name, path in lib.needed_libs.items():
+            print('{} => {}'.format(name, path))
+
     def resolve(self):
         # Demonstration for resolving
-        lst = list(self.store.keys())
-        lib = self.store.get_from_path(lst[0])
+        libobjs = list(val for (key, val) in self.store.items()
+                       if not isinstance(val, str))
+        lib = libobjs[0]
 
-        print('Resolving functions in {}'.format(lst[0]))
+        print('Resolving functions in {}'.format(lib.fullname))
         resolved = self.store.resolve_functions(lib)
         for key, value in resolved.items():
             print("Found {} in {}".format(key, value))
 
-    def print_needed_paths(self):
-        # Demonstration for needed paths resolution
-        libobjs = list(val for (key, val) in self.store.items() if not isinstance(val, str))
-        first = libobjs[0]
-
-        print('Needed libraries for {}'.format(first.fullname))
-
-        for name, path in first.needed_libs.items():
-            print('{} => {}'.format(name, path))
 
 if __name__ == '__main__':
     runner = Runner()
     runner.process()
     runner.print_needed_paths()
-    runner.resolve()
+    # Resolving functions only makes sense if all libraries have been processed
+    if not runner.args.single:
+        runner.resolve()
