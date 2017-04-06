@@ -18,18 +18,18 @@ question, e.g.  `elf = Library('/usr/lib/libsublime.so.8.0.0')`. This will parse
 the ELF header and create an underlying `ELFFile` object provided by
 **pyelftools** but does not automatically resolve imports and exports.
 
-As the resolution needs some more information from the linker, it is encapsuled
-in the `LibraryStore` class. This class can also be used as a dictionary to look
-up the `Library` objects which have already been evaluated (by their absolute
-path). This mechanism also serves as a cache during the recursive descent in
-order to avoid multiple evaluation passes over frequently included libraries
-(such als `libc.so.6`).
+As the resolution needs some more information from the linker, it is
+encapsulated in the `LibraryStore` class. This class can be used as a
+dictionary to look up the `Library` objects which have already been evaluated
+(by their absolute path). This mechanism also serves as a cache during the
+recursive descent in order to avoid multiple evaluation passes over frequently
+included libraries (such als `libc.so.6`).
 
-To resolve the dependencies to their full path without recursing into them, call
-`resolve_libs_single(elf)`. After that, `elf.needed_libs` has been populated
-with the absolute paths to all required libraries but these have not been
-analyzed for imported or exported functions. As mentioned above, you can also
-call `resolve_libs_single_by_path(path)` with an absolute path, and access the
+To resolve the dependencies to their full path without recursing into them,
+call `resolve_libs_single(elf)`. After that, `elf.needed_libs` has been
+populated with the absolute paths to all required libraries but these have not
+been analyzed for imported or exported functions. Alternatively, you can call
+`resolve_libs_single_by_path(path)` with an absolute path, and access the
 `Library` object later from the `LibraryStore` by using its path as a key.
 
 To resolve the full dependency tree starting from `elf` you can call
