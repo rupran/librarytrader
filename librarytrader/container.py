@@ -29,9 +29,9 @@ from librarytrader.library import Library
 
 class LibraryStore(BaseStore):
 
-    def __init__(self):
+    def __init__(self, ldconfig_file=None):
         super(LibraryStore, self).__init__()
-        self.resolver = LDResolve()
+        self.resolver = LDResolve(ldconfig_file)
 
     def _get_or_create_library(self, path):
         link_path = None
@@ -209,6 +209,7 @@ class LDResolve(BaseStore):
             match = re.match(r'(\S+)\s+\((.+)\)\s+=>\ (.+)$', line)
             if match:
                 libname, fullpath = match.group(1), match.group(3)
+                fullpath = os.path.abspath(fullpath)
                 if libname in self:
                     self[libname].append(fullpath)
                 else:
