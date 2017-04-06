@@ -66,8 +66,9 @@ class LibraryStore(BaseStore):
                     continue
 
                 if target.is_compatible(needed):
-                    # If path was a symlink, add link to full name to store
-                    if link_path:
+                    # If path was a symlink and we are in recursive mode,
+                    # add link to full name to store
+                    if link_path and callback:
                         self._add_library(link_path, needed.fullname)
                     # Enter full path to library for DT_NEEDED name
                     target.needed_libs[needed_name] = needed.fullname
