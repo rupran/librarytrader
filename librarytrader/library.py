@@ -51,11 +51,11 @@ class Library:
                     shndx = symbol['st_shndx']
                     symbol_type = symbol['st_info']['type']
                     symbol_bind = symbol['st_info']['bind']
-                    if symbol_type != 'STT_FUNC':
-                        # TODO: check for use of LOOS/IFUNC wrt libc symbols
-                        # like memcpy... consider adding the following to the
-                        # if check:
-                        # and symbol_type != 'STT_LOOS':
+                    if symbol_type != 'STT_FUNC' and symbol_type != 'STT_LOOS':
+                        # TODO: generic check for use of LOOS/IFUNC. libc uses
+                        # STT_IFUNC (which is the same value as STT_LOOS) to
+                        # provide multiple, architecture-specific
+                        # implementations of stuff like memcpy, strcpy etc.
                         continue
 
                     if symbol_bind == 'STB_LOCAL':
