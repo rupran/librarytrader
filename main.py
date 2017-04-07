@@ -88,32 +88,64 @@ class Runner():
         if self.args.store:
             self.store.dump(self.args.store)
 
+    def _get_library_objects(self):
+        return list(val for (key, val) in self.store.items()
+                    if not isinstance(val, str))
+
     def print_needed_paths(self):
         # Demonstration for needed paths resolution
-        libobjs = list(val for (key, val) in self.store.items()
-                       if not isinstance(val, str))
+        libobjs = self._get_library_objects()
         lib = libobjs[0]
 
-        print('Needed libraries for {}'.format(lib.fullname))
+        print('= Needed libraries for {}'.format(lib.fullname))
         for name, path in lib.needed_libs.items():
-            print('{} => {}'.format(name, path))
+            print('-- {} => {}'.format(name, path))
 
-    def resolve(self):
+    def resolve_and_print_one(self):
         # Demonstration for resolving
-        libobjs = list(val for (key, val) in self.store.items()
-                       if not isinstance(val, str))
+        libobjs = self._get_library_objects()
         lib = libobjs[0]
 
-        print('Resolving functions in {}'.format(lib.fullname))
+        print('= Resolving functions in {}'.format(lib.fullname))
         resolved = self.store.resolve_functions(lib)
         for key, value in resolved.items():
-            print("Found {} in {}".format(key, value))
+            print("-- Found {} in {}".format(key, value))
 
+    def count_and_print_resolved(self):
+        collection = {}
+        libobjs = self._get_library_objects()
+
+        # Initialize data for known libraries
+        for lib in libobjs:
+            collection[lib.fullname] = {}
+            for function in lib.exports:
+                collection[lib.fullname][function] = 0
+
+        # Count references across libraries
+        for lib in libobjs:
+            resolved = self.store.resolve_functions(lib)
+            for function, fullname in resolved.items():
+                collection[fullname][function] += 1
+
+        print('= Count of all external function uses:')
+        # Print sorted overview
+        for lib, functions in collection.items():
+            print('- Function uses in \'{}\''.format(lib))
+            for function, count in sorted(functions.items(),
+                                          key=lambda x: (-x[1], x[0])):
+                print('-- {}: {}'.format(function, count))
+
+    def print_store_keys(self):
+        for key, _ in sorted(self.store.items()):
+            print(key)
 
 if __name__ == '__main__':
     runner = Runner()
     runner.process()
     runner.print_needed_paths()
+
     # Resolving functions only makes sense if all libraries have been processed
     if not runner.args.single:
-        runner.resolve()
+        runner.resolve_and_print_one()
+
+    runner.count_and_print_resolved()
