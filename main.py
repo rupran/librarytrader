@@ -119,21 +119,22 @@ class Runner():
         for lib in libobjs:
             collection[lib.fullname] = {}
             for function in lib.exports:
-                collection[lib.fullname][function] = 0
+                collection[lib.fullname][function] = []
 
         # Count references across libraries
         for lib in libobjs:
             resolved = self.store.resolve_functions(lib)
             for function, fullname in resolved.items():
-                collection[fullname][function] += 1
+                collection[fullname][function].append(lib.fullname)
 
         print('= Count of all external function uses:')
         # Print sorted overview
         for lib, functions in collection.items():
             print('- Function uses in \'{}\''.format(lib))
-            for function, count in sorted(functions.items(),
-                                          key=lambda x: (-x[1], x[0])):
-                print('-- {}: {}'.format(function, count))
+            for function, importers in sorted(functions.items(),
+                                          key=lambda x: (-len(x[1]), x[0])):
+                print('-- {}: {}: {}'.format(function, len(importers),
+                                             importers))
 
     def print_store_keys(self):
         for key, _ in sorted(self.store.items()):
