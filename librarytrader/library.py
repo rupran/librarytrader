@@ -21,6 +21,7 @@ import os
 from elftools.elf.dynamic import DynamicSection
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
+from elftools.elf.descriptions import describe_ei_osabi
 
 class Library:
 
@@ -45,17 +46,26 @@ class Library:
         exports = collections.OrderedDict()
         imports = collections.OrderedDict()
 
+        ei_osabi =  self.elfheader['e_ident']['EI_OSABI']
+
         for section in self._elffile.iter_sections():
             if isinstance(section, SymbolTableSection):
                 for _, symbol in enumerate(section.iter_symbols()):
                     shndx = symbol['st_shndx']
                     symbol_type = symbol['st_info']['type']
                     symbol_bind = symbol['st_info']['bind']
-                    if symbol_type != 'STT_FUNC' and symbol_type != 'STT_LOOS':
+
+                    if symbol_type == 'STT_FUNC':
+                        pass
+                    elif (ei_osabi == 'ELFOSABI_LINUX' or \
+                          ei_osabi == 'ELFOSABI_SYSV') \
+                            and symbol_type == 'STT_LOOS':
                         # TODO: generic check for use of LOOS/IFUNC. libc uses
                         # STT_IFUNC (which is the same value as STT_LOOS) to
                         # provide multiple, architecture-specific
                         # implementations of stuff like memcpy, strcpy etc.
+                        pass
+                    else:
                         continue
 
                     if symbol_bind == 'STB_LOCAL':
