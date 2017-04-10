@@ -149,6 +149,25 @@ class LibraryStore(BaseStore):
 
         return result
 
+    def resolve_all_functions(self):
+        result = {}
+        libobjs = list(val for (key, val) in self.items()
+                       if not isinstance(val, str))
+
+        # Initialize data for known libraries
+        for lib in libobjs:
+            result[lib.fullname] = {}
+            for function in lib.exports:
+                result[lib.fullname][function] = []
+
+        # Count references across libraries
+        for lib in libobjs:
+            resolved = self.resolve_functions(lib)
+            for function, fullname in resolved.items():
+                result[fullname][function].append(lib.fullname)
+
+        return result
+
     def dump(self, output_file):
         logging.debug('Saving results to \'%s\'', output_file)
 

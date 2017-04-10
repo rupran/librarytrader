@@ -112,21 +112,7 @@ class Runner():
             print("-- Found {} in {}".format(key, value))
 
     def count_and_print_resolved(self):
-        collection = {}
-        libobjs = self._get_library_objects()
-
-        # Initialize data for known libraries
-        for lib in libobjs:
-            collection[lib.fullname] = {}
-            for function in lib.exports:
-                collection[lib.fullname][function] = []
-
-        # Count references across libraries
-        for lib in libobjs:
-            resolved = self.store.resolve_functions(lib)
-            for function, fullname in resolved.items():
-                collection[fullname][function].append(lib.fullname)
-
+        collection = self.store.resolve_all_functions()
         print('= Count of all external function uses:')
         # Print sorted overview
         for lib, functions in collection.items():
