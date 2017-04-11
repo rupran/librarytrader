@@ -50,6 +50,8 @@ class Library:
 
         for section in self._elffile.iter_sections():
             if isinstance(section, SymbolTableSection):
+                if section.name == '.symtab':
+                    continue
                 for _, symbol in enumerate(section.iter_symbols()):
                     shndx = symbol['st_shndx']
                     symbol_type = symbol['st_info']['type']
