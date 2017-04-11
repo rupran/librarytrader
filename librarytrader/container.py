@@ -93,6 +93,8 @@ class LibraryStore(BaseStore):
             # We were already here once, no need to go further
             return
 
+        logging.debug('Resolving %s', library.fullname)
+
         # Process this library
         library.parse_functions(release=True)
 
@@ -126,6 +128,8 @@ class LibraryStore(BaseStore):
             #TODO: self.resolve_libs_recursive(library)?
             raise ValueError(library.fullname)
 
+        logging.debug('Resolving functions in %s', library.fullname)
+
         result = collections.OrderedDict()
 
         for function in library.imports:
@@ -133,18 +137,20 @@ class LibraryStore(BaseStore):
             for needed_name, needed_path in library.needed_libs.items():
                 imp_lib = self.get_from_path(needed_path)
                 if not imp_lib:
-                    logging.warning('Data for \'%s\' not available in %s!',
+                    logging.warning('|- data for \'%s\' not available in %s!',
                                     needed_name, library.fullname)
                     continue
 
                 if function in imp_lib.exports:
                     result[function] = needed_path
+                    logging.debug('|- found \'%s\' in %s', function,
+                                  needed_path)
                     found = True
                     break
 
             if not found:
                 # TODO: consider symbol versioning?
-                logging.warning('Did not find function \'%s\' from %s',
+                logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 
         return result
