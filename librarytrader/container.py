@@ -179,10 +179,13 @@ class LibraryStore(BaseStore):
                 lib_dict["target"] = value
             else:
                 lib_dict["type"] = "library"
-                #TODO: json does not keep order of OrderedDicts... relevant?
                 lib_dict["imports"] = value.imports
                 lib_dict["exports"] = value.exports
-                lib_dict["needed_libs"] = value.needed_libs
+                lib_dict["needed_libs"] = []
+                # Order is relevant for needed_libs traversal, so convert
+                # dictionary to a list to preserve ordering in JSON
+                for lib, path in value.needed_libs.items():
+                    lib_dict["needed_libs"].append([lib, path])
                 lib_dict["rpaths"] = value.rpaths
 
             output[key] = lib_dict
@@ -204,7 +207,12 @@ class LibraryStore(BaseStore):
                     library = Library(key, load_elffile=False)
                     library.imports = value["imports"]
                     library.exports = value["exports"]
-                    library.needed_libs = value["needed_libs"]
+                    # Recreate order from list
+                    needed_libs = value["needed_libs"]
+                    needed_libs_dict = collections.OrderedDict()
+                    for sublist in needed_libs:
+                        needed_libs_dict[sublist[0]] = sublist[1]
+                    library.needed_libs = needed_libs_dict
                     library.rpaths = value["rpaths"]
                     self._add_library(key, library)
 

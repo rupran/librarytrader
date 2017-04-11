@@ -79,7 +79,7 @@ class Library:
         return exports, imports
 
     def parse_dynamic(self):
-        needed = {}
+        needed = collections.OrderedDict()
         rpaths = []
         for section in self._elffile.iter_sections():
             if not isinstance(section, DynamicSection):
