@@ -21,7 +21,6 @@ import os
 from elftools.elf.dynamic import DynamicSection
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
-from elftools.elf.descriptions import describe_ei_osabi
 
 class Library:
 
@@ -46,7 +45,7 @@ class Library:
         exports = collections.OrderedDict()
         imports = collections.OrderedDict()
 
-        ei_osabi =  self.elfheader['e_ident']['EI_OSABI']
+        ei_osabi = self.elfheader['e_ident']['EI_OSABI']
 
         for section in self._elffile.iter_sections():
             if isinstance(section, SymbolTableSection):
@@ -90,12 +89,12 @@ class Library:
                 if tag.entry.d_tag == 'DT_NEEDED':
                     needed[tag.needed] = None
                 elif tag.entry.d_tag == 'DT_RPATH':
-                    #TODO: RPATH gets passed down, RUNPATH doesn't
                     rpaths = [rpath.replace("$ORIGIN",
                                             os.path.dirname(self.fullname))
                               for rpath in tag.rpath.split(':')]
                 elif tag.entry.d_tag == 'DT_RUNPATH':
                     #TODO only evaluate DT_RPATH if DT_RUNPATH does not exist
+                    #TODO DT_RUNPATH does not get passed down
                     rpaths = [rpath.replace("$ORIGIN",
                                             os.path.dirname(self.fullname))
                               for rpath in tag.runpath.split(':')]

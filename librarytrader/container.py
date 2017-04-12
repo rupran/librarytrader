@@ -58,9 +58,11 @@ class LibraryStore(BaseStore):
     def _add_library(self, path, library):
         self[path] = library
 
-    def _find_compatible_libs(self, target, callback):
+    def _find_compatible_libs(self, target, callback, inherited_rpaths=None):
         for needed_name in target.needed_libs:
-            for path in self.resolver.get_paths(needed_name, target.rpaths):
+            rpaths = self.resolver.get_paths(needed_name, target.rpaths,
+                                             inherited_rpaths)
+            for path in rpaths:
                 needed, link_path = self._get_or_create_library(path)
                 if not needed:
                     continue
@@ -75,12 +77,18 @@ class LibraryStore(BaseStore):
 
                     # If we should continue processing, do the needed one next
                     if callback:
-                        callback(needed)
+                        next_rpaths = []
+                        if inherited_rpaths:
+                            next_rpaths.extend(inherited_rpaths)
+                        if target.rpaths:
+                            next_rpaths.extend(target.rpaths)
+                        callback(needed, inherited_rpaths=next_rpaths)
 
                     # We found the compatible one, continue with next needed lib
                     break
 
-    def _resolve_libs(self, library, path="", callback=None):
+    def _resolve_libs(self, library, path="", callback=None,
+                      inherited_rpaths=None):
         if not library:
             library, link_path = self._get_or_create_library(path)
             if not library:
@@ -102,7 +110,7 @@ class LibraryStore(BaseStore):
         self._add_library(library.fullname, library)
 
         # Find and resolve imports
-        self._find_compatible_libs(library, callback)
+        self._find_compatible_libs(library, callback, inherited_rpaths)
 
     def resolve_libs_single(self, library, path=""):
         self._resolve_libs(library, path)
@@ -110,8 +118,9 @@ class LibraryStore(BaseStore):
     def resolve_libs_single_by_path(self, path):
         self.resolve_libs_single(None, path)
 
-    def resolve_libs_recursive(self, library, path=""):
-        self._resolve_libs(library, path, callback=self.resolve_libs_recursive)
+    def resolve_libs_recursive(self, library, path="", inherited_rpaths=None):
+        self._resolve_libs(library, path, callback=self.resolve_libs_recursive,
+                           inherited_rpaths=inherited_rpaths)
 
     def resolve_libs_recursive_by_path(self, path):
         self.resolve_libs_recursive(None, path)
@@ -257,21 +266,28 @@ class LDResolve(BaseStore):
         else:
             logging.debug('Loaded %d entries from ldconfig', len(self))
 
-    def get_paths(self, libname, rpaths):
+    def get_paths(self, libname, rpaths, inherited_rpaths):
         retval = []
+        to_search = []
 
-        # Check rpaths first
+        # Local rpaths first
         if rpaths:
-            for rpath in rpaths:
-                fullpath = os.path.abspath(os.path.join(rpath, libname))
-                if not os.path.isfile(fullpath):
-                    continue
-                retval.append(fullpath)
+            to_search.extend(path for path in rpaths)
+
+        # ... then possible inherited rpaths
+        if inherited_rpaths:
+            to_search.extend(path for path in inherited_rpaths)
+
+        for rpath in to_search:
+            fullpath = os.path.abspath(os.path.join(rpath, libname))
+            if not os.path.isfile(fullpath):
+                continue
+            retval.append(fullpath)
 
         # ld.so.cache lookup
         ldsocache = self.get(libname, [])
         if not ldsocache:
-            logging.warning("ldconfig doesn't know %s...", libname)
+            logging.debug("ldconfig doesn't know %s...", libname)
         retval.extend(ldsocache)
 
         if not retval:
