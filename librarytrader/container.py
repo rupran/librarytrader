@@ -44,7 +44,7 @@ class LibraryStore(BaseStore):
 
         try:
             return (Library(path), link_path)
-        except (ELFError, FileNotFoundError) as err:
+        except (ELFError, OSError) as err:
             logging.error('\'%s\' => %s', path, err)
             return (None, None)
 
