@@ -61,7 +61,7 @@ class LibraryStore(BaseStore):
     def _find_compatible_libs(self, target, callback, inherited_rpaths=None):
         for needed_name in target.needed_libs:
             rpaths = self.resolver.get_paths(needed_name, target.rpaths,
-                                             inherited_rpaths)
+                                             inherited_rpaths, target.runpaths)
             for path in rpaths:
                 needed, link_path = self._get_or_create_library(path)
                 if not needed:
@@ -78,10 +78,12 @@ class LibraryStore(BaseStore):
                     # If we should continue processing, do the needed one next
                     if callback:
                         next_rpaths = []
-                        if inherited_rpaths:
-                            next_rpaths.extend(inherited_rpaths)
-                        if target.rpaths:
-                            next_rpaths.extend(target.rpaths)
+                        #TODO correct passdown behaviour if DT_RUNPATH is set?
+                        if not target.runpaths:
+                            if inherited_rpaths:
+                                next_rpaths.extend(inherited_rpaths)
+                            if target.rpaths:
+                                next_rpaths.extend(target.rpaths)
                         callback(needed, inherited_rpaths=next_rpaths)
 
                     # We found the compatible one, continue with next needed lib
@@ -266,17 +268,20 @@ class LDResolve(BaseStore):
         else:
             logging.debug('Loaded %d entries from ldconfig', len(self))
 
-    def get_paths(self, libname, rpaths, inherited_rpaths):
+    def get_paths(self, libname, rpaths, inherited_rpaths, runpaths):
         retval = []
         to_search = []
 
-        # Local rpaths first
-        if rpaths:
-            to_search.extend(path for path in rpaths)
+        if not runpaths:
+            # Local rpaths first
+            if rpaths:
+                to_search.extend(path for path in rpaths)
 
-        # ... then possible inherited rpaths
-        if inherited_rpaths:
-            to_search.extend(path for path in inherited_rpaths)
+            # ... then possible inherited rpaths
+            if inherited_rpaths:
+                to_search.extend(path for path in inherited_rpaths)
+        else:
+            to_search.extend(path for path in runpaths)
 
         for rpath in to_search:
             fullpath = os.path.abspath(os.path.join(rpath, libname))

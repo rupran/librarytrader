@@ -40,6 +40,7 @@ class Library:
 
         self.needed_libs = None
         self.rpaths = None
+        self.runpaths = None
 
     def parse_symtab(self):
         exports = collections.OrderedDict()
@@ -82,6 +83,7 @@ class Library:
     def parse_dynamic(self):
         needed = collections.OrderedDict()
         rpaths = []
+        runpaths = []
         for section in self._elffile.iter_sections():
             if not isinstance(section, DynamicSection):
                 continue
@@ -93,17 +95,15 @@ class Library:
                                             os.path.dirname(self.fullname))
                               for rpath in tag.rpath.split(':')]
                 elif tag.entry.d_tag == 'DT_RUNPATH':
-                    #TODO only evaluate DT_RPATH if DT_RUNPATH does not exist
-                    #TODO DT_RUNPATH does not get passed down
-                    rpaths = [rpath.replace("$ORIGIN",
-                                            os.path.dirname(self.fullname))
-                              for rpath in tag.runpath.split(':')]
+                    runpaths = [rpath.replace("$ORIGIN",
+                                              os.path.dirname(self.fullname))
+                                for rpath in tag.runpath.split(':')]
 
-        return needed, rpaths
+        return needed, rpaths, runpaths
 
     def parse_functions(self, release=False):
         self.exports, self.imports = self.parse_symtab()
-        self.needed_libs, self.rpaths = self.parse_dynamic()
+        self.needed_libs, self.rpaths, self.runpaths = self.parse_dynamic()
         if release:
             self._release_elffile()
 
