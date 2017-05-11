@@ -18,6 +18,7 @@
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
+import collections
 import logging
 import os
 import sys
@@ -101,6 +102,14 @@ class Runner():
         for name, path in lib.needed_libs.items():
             print('-- {} => {}'.format(name, path))
 
+        histo = collections.defaultdict(int)
+        for lib in libobjs:
+            histo[len(list(lib.needed_libs.keys()))] += 1
+
+        with open('needed_histo.csv', 'w') as fd:
+            for num, count in sorted(histo.items()):
+                fd.write('{},{}\n'.format(num, count))
+
     def resolve_and_print_one(self):
         # Demonstration for resolving
         libobjs = self._get_library_objects()
@@ -111,16 +120,57 @@ class Runner():
         for key, value in resolved.items():
             print("-- Found {} in {}".format(key, value))
 
-    def count_and_print_resolved(self):
+    def count_and_print_resolved(self, do_print=True):
         collection = self.store.resolve_all_functions()
-        print('= Count of all external function uses:')
+        histo_percent = collections.defaultdict(int)
+        if do_print:
+            print('= Count of all external function uses:')
         # Print sorted overview
         for lib, functions in collection.items():
-            print('- Function uses in \'{}\''.format(lib))
+            if do_print:
+                print('- Function uses in \'{}\''.format(lib))
             for function, importers in sorted(functions.items(),
                                           key=lambda x: (-len(x[1]), x[0])):
-                print('-- {}: {}: {}'.format(function, len(importers),
-                                             importers))
+                if do_print:
+                    print('-- {}: {}: {}'.format(function, len(importers),
+                                                 importers))
+            if len(self.store[lib].exports) > 0 and ".so" in lib:
+                pctg = len(list(x for (x, y) in functions.items() if len(y) > 0))/len(self.store[lib].exports)
+                pctg = int(pctg * 100)
+                if 'x32/libc-2.23.so' in lib and do_print:
+                    print(pctg, lib)
+                histo_percent[pctg] += 1
+
+
+        with open('import_use_histo.csv', 'w') as fd:
+            for key, value in sorted(histo_percent.items()):
+                fd.write('{},{}\n'.format(key, value))
+
+
+    def do_import_export_histograms(self):
+        libobjs = self._get_library_objects()
+
+        histo_in = collections.defaultdict(int)
+        histo_out = collections.defaultdict(int)
+        for lib in libobjs:
+            num_imports = len(list(lib.imports))
+            num_exports = len(list(lib.exports))
+            histo_in[num_imports] += 1
+            histo_out[num_exports] += 1
+            if num_exports > 20000:
+                print('Exporter {}: {}'.format(lib.fullname, num_exports))
+            if num_imports > 3000:
+                print('Importer {}: {}'.format(lib.fullname, num_imports))
+
+
+        with open('imports_histo.csv', 'w') as fd:
+            for key, value in sorted(histo_in.items()):
+                fd.write('{},{}\n'.format(key, value))
+
+
+        with open('exports_histo.csv', 'w') as fd:
+            for key, value in sorted(histo_out.items()):
+                fd.write('{},{}\n'.format(key, value))
 
     def print_store_keys(self):
         for key, _ in sorted(self.store.items()):
@@ -129,10 +179,11 @@ class Runner():
 if __name__ == '__main__':
     runner = Runner()
     runner.process()
-    runner.print_needed_paths()
+#    runner.print_needed_paths()
 
     # Resolving functions only makes sense if all libraries have been processed
-    if not runner.args.single:
-        runner.resolve_and_print_one()
+#    if not runner.args.single:
+#        runner.resolve_and_print_one()
 
-    runner.count_and_print_resolved()
+#    runner.count_and_print_resolved(do_print=False)
+#    runner.do_import_export_histograms()
