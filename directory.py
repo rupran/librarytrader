@@ -64,19 +64,21 @@ class DirectoryScan:
                 exporter[exp_function] = lib
 
         for lib in self.libraries:
-            for imported in lib.imports.keys():
-                if imported in exporter:
+            for function in lib.imports.keys():
+                if function in exporter:
+                    exporting_lib = exporter[function]
                     # note on importers side where the import comes from
-                    lib.imports[imported] = exporter[imported].fullname
+                    lib.imports[function] = exporting_lib.fullname
                     logging.debug('Function \'%s\' in %s imported from %s',
-                                  imported, lib.fullname,
-                                  exporter[imported].fullname)
-                    # note on exporters side who import 'us'
-                    if exporter[imported].exports[imported] is None:
-                        exporter[imported].exports[imported] = []
-                    exporter[imported].exports[imported].append(lib.fullname)
+                                  function, lib.fullname,
+                                  exporting_lib.fullname)
+                    # note on exporters side that we imported the function
+                    if exporting_lib.exports[function] is None:
+                        exporting_lib.exports[function] = []
+                    exporting_lib.exports[function].append(lib.fullname)
                 else:
-                    logging.debug('No match for function \'%s\'', imported)
+                    logging.debug('No match for function \'%s\'',
+                                  function)
 
     def print_imports_exports(self, name_match=None):
         for lib in self.libraries:
