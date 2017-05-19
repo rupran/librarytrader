@@ -83,7 +83,7 @@ class DirectoryScan:
     def print_imports_exports(self, name_match=None):
         for lib in self.libraries:
             shortname = self._strip_basedir(lib.fullname)
-            if name_match and name_match in shortname:
+            if not name_match or name_match in shortname:
                 # Check exporter side
                 print('Used exports of \'{}\':'.format(shortname))
                 for key, value in lib.exports.items():
