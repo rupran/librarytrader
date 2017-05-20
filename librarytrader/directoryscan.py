@@ -17,10 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
-import argparse
 import logging
 import os
-import sys
 
 from elftools.common.exceptions import ELFError
 
@@ -97,32 +95,3 @@ class DirectoryScan:
                     if value is None:
                         continue
                     print('  {}: {}'.format(key, self._strip_basedir(value)))
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Scan a directory and ' \
-        'resolve functions between libraries inside the directory.')
-    parser.add_argument('target', type=str,
-                        help='the directory containing all libraries')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='verbose output')
-    parser.add_argument('--debug', action='store_true',
-                        help=argparse.SUPPRESS)
-
-    args = parser.parse_args()
-
-    loglevel = logging.WARNING
-    if args.verbose:
-        loglevel = logging.INFO
-    if args.debug:
-        loglevel = logging.DEBUG
-
-    logging.basicConfig(level=loglevel)
-
-    if not os.path.isdir(args.target):
-        sys.exit("Error: {} is not a directory!".format(args.target))
-
-    scanner = DirectoryScan(args.target)
-    scanner.read_libraries()
-    scanner.try_resolve()
-    scanner.print_imports_exports('libc')
