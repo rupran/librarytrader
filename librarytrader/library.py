@@ -75,7 +75,7 @@ class Library:
 
                     if shndx == 'SHN_UNDEF':
                         imports[symbol.name] = None
-                    else:
+                    elif self.elfheader['e_type'] != 'ET_EXEC':
                         exports[symbol.name] = None
 
         return exports, imports
