@@ -116,3 +116,17 @@ class Library:
         o_hdr = other.elfheader
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']
+
+    def summary(self):
+        imports = 0 if self.imports is None else len(self.imports)
+        exports = 0 if self.exports is None else len(self.exports)
+        needed = 0 if self.needed_libs is None else len(self.needed_libs)
+        rpaths = 0 if self.rpaths is None else len(self.rpaths)
+        runpaths = 0 if self.runpaths is None else len(self.runpaths)
+        return '{}: {} imports, {} exports, {} needed libs, ' \
+                   '{} rpaths, {} runpaths' \
+                   .format(self.fullname, imports, exports, needed,
+                           rpaths, runpaths)
+
+    def __str__(self):
+        return self.summary()
