@@ -64,6 +64,10 @@ class DirectoryScan:
         for lib in self.libraries:
             for function in lib.imports.keys():
                 if function in exporter:
+                    if exporter[function].soname not in lib.needed_libs.keys():
+                        logging.warning('Found %s in %s, but no DT_NEEDED in %s',
+                                        function, exporter[function].fullname,
+                                        lib.fullname)
                     exporting_lib = exporter[function]
                     # note on importers side where the import comes from
                     lib.imports[function] = exporting_lib.fullname

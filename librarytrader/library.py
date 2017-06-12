@@ -41,10 +41,11 @@ class Library:
         self.needed_libs = None
         self.rpaths = None
         self.runpaths = None
+        self.soname = None
 
     def parse_symtab(self):
-        exports = collections.OrderedDict()
-        imports = collections.OrderedDict()
+        self.exports = collections.OrderedDict()
+        self.imports = collections.OrderedDict()
 
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
 
@@ -74,36 +75,34 @@ class Library:
                         continue
 
                     if shndx == 'SHN_UNDEF':
-                        imports[symbol.name] = None
+                        self.imports[symbol.name] = None
                     elif self.elfheader['e_type'] != 'ET_EXEC':
-                        exports[symbol.name] = None
-
-        return exports, imports
+                        self.exports[symbol.name] = None
 
     def parse_dynamic(self):
-        needed = collections.OrderedDict()
-        rpaths = []
-        runpaths = []
+        self.needed_libs = collections.OrderedDict()
+        self.rpaths = []
+        self.runpaths = []
         for section in self._elffile.iter_sections():
             if not isinstance(section, DynamicSection):
                 continue
             for tag in section.iter_tags():
                 if tag.entry.d_tag == 'DT_NEEDED':
-                    needed[tag.needed] = None
+                    self.needed_libs[tag.needed] = None
                 elif tag.entry.d_tag == 'DT_RPATH':
-                    rpaths = [rpath.replace("$ORIGIN",
-                                            os.path.dirname(self.fullname))
-                              for rpath in tag.rpath.split(':')]
+                    self.rpaths = [rpath.replace("$ORIGIN",
+                                                 os.path.dirname(self.fullname))
+                                   for rpath in tag.rpath.split(':')]
                 elif tag.entry.d_tag == 'DT_RUNPATH':
-                    runpaths = [rpath.replace("$ORIGIN",
-                                              os.path.dirname(self.fullname))
-                                for rpath in tag.runpath.split(':')]
-
-        return needed, rpaths, runpaths
+                    self.runpaths = [rpath.replace("$ORIGIN",
+                                                   os.path.dirname(self.fullname))
+                                     for rpath in tag.runpath.split(':')]
+                elif tag.entry.d_tag == 'DT_SONAME':
+                    self.soname = tag.soname
 
     def parse_functions(self, release=False):
-        self.exports, self.imports = self.parse_symtab()
-        self.needed_libs, self.rpaths, self.runpaths = self.parse_dynamic()
+        self.parse_symtab()
+        self.parse_dynamic()
         if release:
             self._release_elffile()
 
