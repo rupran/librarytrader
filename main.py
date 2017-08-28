@@ -185,4 +185,4 @@ if __name__ == '__main__':
 #        runner.resolve_and_print_one()
 
 #    runner.count_and_print_resolved(do_print=False)
-#    runner.do_import_export_histograms()
+    runner.do_import_export_histograms()

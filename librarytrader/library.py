@@ -35,18 +35,15 @@ class Library:
             self._elffile = ELFFile(self._fd)
             self.elfheader = self._elffile.header
 
-        self.exports = None
-        self.imports = None
-
-        self.needed_libs = None
-        self.rpaths = None
-        self.runpaths = None
-        self.soname = None
-
-    def parse_symtab(self):
         self.exports = collections.OrderedDict()
         self.imports = collections.OrderedDict()
 
+        self.needed_libs = collections.OrderedDict()
+        self.rpaths = []
+        self.runpaths = []
+        self.soname = None
+
+    def parse_symtab(self):
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
 
         for section in self._elffile.iter_sections():
@@ -80,9 +77,6 @@ class Library:
                         self.exports[symbol.name] = None
 
     def parse_dynamic(self):
-        self.needed_libs = collections.OrderedDict()
-        self.rpaths = []
-        self.runpaths = []
         for section in self._elffile.iter_sections():
             if not isinstance(section, DynamicSection):
                 continue
@@ -117,15 +111,11 @@ class Library:
             hdr['e_machine'] == o_hdr['e_machine']
 
     def summary(self):
-        imports = 0 if self.imports is None else len(self.imports)
-        exports = 0 if self.exports is None else len(self.exports)
-        needed = 0 if self.needed_libs is None else len(self.needed_libs)
-        rpaths = 0 if self.rpaths is None else len(self.rpaths)
-        runpaths = 0 if self.runpaths is None else len(self.runpaths)
         return '{}: {} imports, {} exports, {} needed libs, ' \
                    '{} rpaths, {} runpaths' \
-                   .format(self.fullname, imports, exports, needed,
-                           rpaths, runpaths)
+                   .format(self.fullname, len(self.imports), len(self.exports),
+                           len(self.needed_libs), len(self.rpaths),
+                           len(self.runpaths))
 
     def __str__(self):
         return self.summary()
