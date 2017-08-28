@@ -28,11 +28,11 @@ from librarytrader.librarystore import LibraryStore
 class Runner():
 
     def __init__(self):
-        self.parse_arguments()
+        self._parse_arguments()
         self.store = LibraryStore()
-        self.paths = self.get_paths()
+        self.paths = self._get_paths()
 
-    def parse_arguments(self):
+    def _parse_arguments(self):
         parser = argparse.ArgumentParser(description='Evaluate imports and ' \
             'exports of .so libraries and ELF executables.')
         parser.add_argument('paths', type=str, nargs='*',
@@ -57,7 +57,12 @@ class Runner():
 
         logging.basicConfig(level=loglevel)
 
-    def get_paths(self):
+        if not self.args.load and not self.args.paths:
+            logging.error('Please load results and/or provide paths to analyze')
+            parser.print_help()
+            sys.exit(1)
+
+    def _get_paths(self):
         result = []
         for arg in self.args.paths:
             if os.path.isdir(arg):
@@ -71,9 +76,6 @@ class Runner():
     def process(self):
         if self.args.load:
             self.store.load(self.args.load)
-        elif not self.args.paths:
-            logging.error('Please import results and/or provide paths to analyze')
-            sys.exit(1)
 
         logging.info('Processing %d paths in total', len(self.paths))
 
@@ -130,22 +132,21 @@ class Runner():
             if do_print:
                 print('- Function uses in \'{}\''.format(lib))
             for function, importers in sorted(functions.items(),
-                                          key=lambda x: (-len(x[1]), x[0])):
+                                              key=lambda x: (-len(x[1]), x[0])):
                 if do_print:
                     print('-- {}: {}: {}'.format(function, len(importers),
                                                  importers))
             if len(self.store[lib].exports) > 0 and ".so" in lib:
-                pctg = len(list(x for (x, y) in functions.items() if len(y) > 0))/len(self.store[lib].exports)
+                pctg = len(list(x for (x, y) in functions.items() if len(y) > 0)) \
+                       / len(self.store[lib].exports)
                 pctg = int(pctg * 100)
                 if 'x32/libc-2.23.so' in lib and do_print:
                     print(pctg, lib)
                 histo_percent[pctg] += 1
 
-
         with open('import_use_histo.csv', 'w') as fd:
             for key, value in sorted(histo_percent.items()):
                 fd.write('{},{}\n'.format(key, value))
-
 
     def do_import_export_histograms(self):
         libobjs = self._get_library_objects()
@@ -162,11 +163,9 @@ class Runner():
             if num_imports > 3000:
                 print('Importer {}: {}'.format(lib.fullname, num_imports))
 
-
         with open('imports_histo.csv', 'w') as fd:
             for key, value in sorted(histo_in.items()):
                 fd.write('{},{}\n'.format(key, value))
-
 
         with open('exports_histo.csv', 'w') as fd:
             for key, value in sorted(histo_out.items()):
