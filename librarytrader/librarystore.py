@@ -19,13 +19,12 @@ import collections
 import json
 import logging
 import os
-import re
 
 from elftools.common.exceptions import ELFError
 
 from librarytrader.common.datatypes import BaseStore
 from librarytrader.library import Library
-
+from librarytrader.ldresolve import LDResolve
 
 class LibraryStore(BaseStore):
 
@@ -234,67 +233,3 @@ class LibraryStore(BaseStore):
                     self._add_library(key, library)
 
         logging.debug('... done with %s entries', len(self))
-
-
-class LDResolve(BaseStore):
-
-    def __init__(self, from_file=None):
-        super(LDResolve, self).__init__()
-        self.reload(from_file)
-
-    def reload(self, from_file):
-        self.reset()
-
-        if from_file:
-            lines = open(from_file, 'r')
-        else:
-            lines = os.popen('/sbin/ldconfig -p')
-
-        for line in lines:
-            line = line.strip()
-            match = re.match(r'(\S+)\s+\((.+)\)\s+=>\ (.+)$', line)
-            if match:
-                libname, fullpath = match.group(1), match.group(3)
-                fullpath = os.path.abspath(fullpath)
-                if libname in self:
-                    self[libname].append(fullpath)
-                else:
-                    self[libname] = [fullpath]
-            else:
-                logging.info('ill-formed line \'%s\'', line)
-
-        if not len(self):
-            logging.error('ldconfig info is missing!')
-        else:
-            logging.debug('Loaded %d entries from ldconfig', len(self))
-
-    def get_paths(self, libname, rpaths, inherited_rpaths, runpaths):
-        retval = []
-        to_search = []
-
-        if not runpaths:
-            # Local rpaths first
-            if rpaths:
-                to_search.extend(path for path in rpaths)
-
-            # ... then possible inherited rpaths
-            if inherited_rpaths:
-                to_search.extend(path for path in inherited_rpaths)
-        else:
-            to_search.extend(path for path in runpaths)
-
-        for rpath in to_search:
-            fullpath = os.path.abspath(os.path.join(rpath, libname))
-            if not os.path.isfile(fullpath):
-                continue
-            retval.append(fullpath)
-
-        # ld.so.cache lookup
-        ldsocache = self.get(libname, [])
-        if not ldsocache:
-            logging.debug("ldconfig doesn't know %s...", libname)
-        retval.extend(ldsocache)
-
-        if not retval:
-            logging.warning("no file for '%s'...", libname)
-        return retval

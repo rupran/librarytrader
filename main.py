@@ -23,7 +23,7 @@ import logging
 import os
 import sys
 
-from librarytrader.container import LibraryStore
+from librarytrader.librarystore import LibraryStore
 
 class Runner():
 

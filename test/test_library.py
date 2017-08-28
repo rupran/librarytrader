@@ -2,7 +2,7 @@ import os
 import unittest
 
 from librarytrader.library import Library
-from librarytrader.container import LibraryStore
+from librarytrader.librarystore import LibraryStore
 
 FILE_PATH = 'test/test_files/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
