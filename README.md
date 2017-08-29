@@ -19,8 +19,8 @@ the ELF header and create an underlying `ELFFile` object provided by
 
 ## Analyzing your currently running system
 
-The `main.py` file offers a good example on how to use **librarytrader** for
-analyzing a running system.
+The script at `scripts/running_analysis.py` offers a good example on how to use
+**librarytrader** for analyzing a running system.
 
 The resolution of imports on a live system is encapsulated in the `LibraryStore`
 class. This class can be used as a dictionary to look up the `Library` objects
@@ -87,4 +87,5 @@ only want to print import/export information for a subset of all files, this
 method supports passing a `name_match` parameter: if given, only those libraries
 are printed for which `name_match` is a substring of the target library name(s).
 
-An example for using `DirectoryScan` can be found in `directory_example.py`.
+An example for using `DirectoryScan` can be found in
+`scripts/directory_example.py`.
