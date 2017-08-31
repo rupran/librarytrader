@@ -23,6 +23,10 @@ import logging
 import os
 import sys
 
+# In order to be able to use librarytrader from git without having installed it,
+# add top level directory to PYTHONPATH
+sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
+
 from librarytrader.librarystore import LibraryStore
 
 class Runner():
