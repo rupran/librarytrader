@@ -70,9 +70,10 @@ class Runner():
         result = []
         for arg in self.args.paths:
             if os.path.isdir(arg):
-                result.extend([os.path.join(os.path.abspath(arg), entry.name)
-                               for entry in os.scandir(arg)
-                               if entry.is_file()])
+                for entry in os.listdir(arg):
+                    fullpath = os.path.join(os.path.abspath(arg), entry)
+                    if os.path.isfile(fullpath):
+                        result.append(fullpath)
             else:
                 result.append(arg)
         return result

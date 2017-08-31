@@ -11,18 +11,20 @@ out = set()
 u_paths = os.environ['PATH'].split(':')
 
 # PATHs for superuser
-p = subprocess.run('echo \'echo $PATH\' | sudo sh', shell=True,
-                   stdout=subprocess.PIPE,
-                   stdin=subprocess.PIPE)
-sudo_paths = p.stdout.decode('utf-8').strip().split(':')
-paths = sorted(set(u_paths + sudo_paths))
+p = subprocess.Popen('echo \'echo $PATH\' | sudo sh', shell=True,
+                     stdout=subprocess.PIPE,
+                     stdin=subprocess.PIPE)
 
+stdout, _ = p.communicate()
+sudo_paths = stdout.decode('utf-8').strip().split(':')
+
+paths = sorted(set(u_paths + sudo_paths))
 out.update(paths)
 
 # Library paths from ldconfig
-p = subprocess.run(["/sbin/ldconfig", "-p"], stdout=subprocess.PIPE)
-
-lines = [str(x) for x in re.split(b'\n\t', p.stdout)]
+p = subprocess.Popen(["/sbin/ldconfig", "-p"], stdout=subprocess.PIPE)
+stdout, _ = p.communicate()
+lines = [str(x) for x in re.split(b'\n\t', stdout)]
 
 for line in lines[1:]:
     out.add('/'.join((line.strip().split('=>')[1].split('/')[:-1])).strip())
