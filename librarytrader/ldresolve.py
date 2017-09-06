@@ -27,8 +27,15 @@ class LDResolve(BaseStore):
         super(LDResolve, self).__init__()
         self.reload(from_file)
 
+    def _add_or_append(self, libname, fullpath):
+        if libname in self:
+            self[libname].append(fullpath)
+        else:
+            self[libname] = [fullpath]
+
     def reload(self, from_file):
         self.reset()
+        self.basepaths = set()
 
         if from_file:
             lines = open(from_file, 'r')
@@ -41,10 +48,11 @@ class LDResolve(BaseStore):
             if match:
                 libname, fullpath = match.group(1), match.group(3)
                 fullpath = os.path.abspath(fullpath)
-                if libname in self:
-                    self[libname].append(fullpath)
-                else:
-                    self[libname] = [fullpath]
+                self._add_or_append(libname, fullpath)
+
+                basepath = os.path.join(os.sep, *fullpath.split('/')[:-1])
+                if not basepath in self.basepaths:
+                    self.basepaths.add(basepath)
             else:
                 logging.info('ill-formed line \'%s\'', line)
 
@@ -82,4 +90,15 @@ class LDResolve(BaseStore):
 
         if not retval:
             logging.warning("no file for '%s'...", libname)
+        return retval
+
+    def search_in_ldd_paths(self, libname):
+        retval = []
+        for basepath in self.basepaths:
+            fullpath = os.path.join(basepath, libname)
+            if os.path.isfile(fullpath):
+                # Add found library to resolver database
+                self._add_or_append(libname, fullpath)
+                retval.append(fullpath)
+
         return retval

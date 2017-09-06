@@ -57,36 +57,54 @@ class LibraryStore(BaseStore):
     def _add_library(self, path, library):
         self[path] = library
 
+    def _get_compatible_libs(self, target, paths):
+        retval = []
+        for path in paths:
+            needed, link_path = self._get_or_create_library(path)
+            if not needed:
+                continue
+
+            if target.is_compatible(needed):
+                retval.append((needed, link_path))
+
+        return retval
+
     def _find_compatible_libs(self, target, callback, inherited_rpaths=None):
         for needed_name in target.needed_libs:
             rpaths = self.resolver.get_paths(needed_name, target.rpaths,
                                              inherited_rpaths, target.runpaths)
-            for path in rpaths:
-                needed, link_path = self._get_or_create_library(path)
-                if not needed:
-                    continue
 
-                if target.is_compatible(needed):
-                    # If path was a symlink and we are in recursive mode,
-                    # add link to full name to store
-                    if link_path and callback:
-                        self._add_library(link_path, needed.fullname)
-                    # Enter full path to library for DT_NEEDED name
-                    target.needed_libs[needed_name] = needed.fullname
+            # Try to find compatible libs from ldconfig and rpath alone
+            possible_libs = self._get_compatible_libs(target, rpaths)
 
-                    # If we should continue processing, do the needed one next
-                    if callback:
-                        next_rpaths = []
-                        #TODO correct passdown behaviour if DT_RUNPATH is set?
-                        if not target.runpaths:
-                            if inherited_rpaths:
-                                next_rpaths.extend(inherited_rpaths)
-                            if target.rpaths:
-                                next_rpaths.extend(target.rpaths)
-                        callback(needed, inherited_rpaths=next_rpaths)
+            # If that fails, try directly probing filenames in the directories
+            # ldconfig shows as containing libraries
+            if not possible_libs:
+                logging.debug('File system search needed for \'%s\'', needed_name)
+                fs_paths = self.resolver.search_in_ldd_paths(needed_name)
+                possible_libs = self._get_compatible_libs(target, fs_paths)
 
-                    # We found the compatible one, continue with next needed lib
-                    break
+            for needed, link_path in possible_libs:
+                # If path was a symlink and we are in recursive mode,
+                # add link to full name to store
+                if link_path and callback:
+                    self._add_library(link_path, needed.fullname)
+                # Enter full path to library for DT_NEEDED name
+                target.needed_libs[needed_name] = needed.fullname
+
+                # If we should continue processing, do the needed one next
+                if callback:
+                    next_rpaths = []
+                    #TODO correct passdown behaviour if DT_RUNPATH is set?
+                    if not target.runpaths:
+                        if inherited_rpaths:
+                            next_rpaths.extend(inherited_rpaths)
+                        if target.rpaths:
+                            next_rpaths.extend(target.rpaths)
+                    callback(needed, inherited_rpaths=next_rpaths)
+
+                # We found the compatible one, continue with next needed lib
+                break
 
     def _resolve_libs(self, library, path="", callback=None,
                       inherited_rpaths=None):
