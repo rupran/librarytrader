@@ -109,6 +109,10 @@ class Runner():
         for name, path in lib.needed_libs.items():
             print('-- {} => {}'.format(name, path))
 
+        print('= All imported libraries for {}'.format(lib.fullname))
+        for name, path in lib.all_imported_libs.items():
+            print('-- {} => {}'.format(name, path))
+
         histo = collections.defaultdict(int)
         for lib in libobjs:
             histo[len(list(lib.needed_libs.keys()))] += 1

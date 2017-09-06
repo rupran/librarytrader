@@ -91,6 +91,7 @@ class LibraryStore(BaseStore):
                     self._add_library(link_path, needed.fullname)
                 # Enter full path to library for DT_NEEDED name
                 target.needed_libs[needed_name] = needed.fullname
+                target.all_imported_libs[needed_name] = needed.fullname
 
                 # If we should continue processing, do the needed one next
                 if callback:
@@ -102,6 +103,8 @@ class LibraryStore(BaseStore):
                         if target.rpaths:
                             next_rpaths.extend(target.rpaths)
                     callback(needed, inherited_rpaths=next_rpaths)
+
+                    target.all_imported_libs.update(needed.all_imported_libs)
 
                 # We found the compatible one, continue with next needed lib
                 break
@@ -162,7 +165,7 @@ class LibraryStore(BaseStore):
 
         for function in library.imports:
             found = False
-            for needed_name, needed_path in library.needed_libs.items():
+            for needed_name, needed_path in library.all_imported_libs.items():
                 imp_lib = self.get_from_path(needed_path)
                 if not imp_lib:
                     logging.warning('|- data for \'%s\' not available in %s!',
@@ -220,6 +223,9 @@ class LibraryStore(BaseStore):
                 # dictionary to a list to preserve ordering in JSON
                 for lib, path in value.needed_libs.items():
                     lib_dict["needed_libs"].append([lib, path])
+                lib_dict["all_imported_libs"] = []
+                for lib, path in value.all_imported_libs.items():
+                    lib_dict["all_imported_libs"].append([lib, path])
                 lib_dict["rpaths"] = value.rpaths
 
             output[key] = lib_dict
@@ -244,9 +250,14 @@ class LibraryStore(BaseStore):
                     # Recreate order from list
                     needed_libs = value["needed_libs"]
                     needed_libs_dict = collections.OrderedDict()
-                    for sublist in needed_libs:
-                        needed_libs_dict[sublist[0]] = sublist[1]
+                    for lib, path in needed_libs:
+                        needed_libs_dict[lib] = path
                     library.needed_libs = needed_libs_dict
+                    all_imported_libs = value["all_imported_libs"]
+                    all_imported_libs_dict = collections.OrderedDict()
+                    for lib, path in all_imported_libs:
+                        all_imported_libs_dict[lib] = path
+                    library.all_imported_libs = all_imported_libs_dict
                     library.rpaths = value["rpaths"]
                     self._add_library(key, library)
 

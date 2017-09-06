@@ -39,6 +39,7 @@ class Library:
         self.imports = collections.OrderedDict()
 
         self.needed_libs = collections.OrderedDict()
+        self.all_imported_libs = collections.OrderedDict()
         self.rpaths = []
         self.runpaths = []
         self.soname = None
