@@ -34,7 +34,10 @@ class LibraryStore(BaseStore):
 
     def _get_or_create_library(self, path):
         link_path = None
-        if os.path.islink(path):
+
+        if os.path.islink(path) or \
+                os.path.abspath(os.path.dirname(path)) != \
+                os.path.realpath(os.path.abspath(os.path.dirname(path))):
             link_path = path
             path = os.path.realpath(path)
 
