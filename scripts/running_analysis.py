@@ -22,18 +22,20 @@ import collections
 import logging
 import os
 import sys
+from multiprocessing import cpu_count
 
 # In order to be able to use librarytrader from git without having installed it,
 # add top level directory to PYTHONPATH
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
-from librarytrader.librarystore import LibraryStore
+import librarytrader.librarystore as processing
+#from librarytrader.common.utils import dumpDot
 
 class Runner():
 
     def __init__(self):
         self._parse_arguments()
-        self.store = LibraryStore()
+        self.store = dict()
         self.paths = self._get_paths()
 
     def _parse_arguments(self):
@@ -51,9 +53,12 @@ class Runner():
                             help='Store calculated mapping to JSON file')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
+        parser.add_argument('--tasks', '-t', action='store', type=int,
+                            help='Number of parallel processes to use',
+                            default=int(cpu_count() * 1.25))
         self.args = parser.parse_args()
 
-        loglevel = logging.WARNING
+        loglevel = logging.ERROR
         if self.args.verbose:
             loglevel = logging.INFO
         if self.args.debug:
@@ -80,21 +85,23 @@ class Runner():
 
     def process(self):
         if self.args.load:
-            self.store.load(self.args.load)
+            processing.load(self.args.load, self.store)
 
         logging.info('Processing %d paths in total', len(self.paths))
 
-        for path in self.paths:
-            logging.info('Processing %s', path)
-            if self.args.single:
-                self.store.resolve_libs_single_by_path(path)
-            else:
-                self.store.resolve_libs_recursive_by_path(path)
+        self.store = processing.process_from_list(self.paths, self.args.tasks,
+                                                  self.args.single)
 
         logging.info('Number of entries: %d', len(self.store))
 
         if self.args.store:
-            self.store.dump(self.args.store)
+            processing.dump(self.store, self.args.store)
+
+##############################################################################
+# All methods below this line should only be called when process has already #
+# finished evaluating the libraries in the way given by the command line     #
+# parameters.                                                                #
+##############################################################################
 
     def _get_library_objects(self):
         return list(val for (key, val) in self.store.items()
@@ -117,9 +124,9 @@ class Runner():
         for lib in libobjs:
             histo[len(list(lib.needed_libs.keys()))] += 1
 
-        with open('needed_histo.csv', 'w') as fd:
+        with open('needed_histo.csv', 'w') as fdesc:
             for num, count in sorted(histo.items()):
-                fd.write('{},{}\n'.format(num, count))
+                fdesc.write('{},{}\n'.format(num, count))
 
     def resolve_and_print_one(self):
         # Demonstration for resolving
@@ -127,12 +134,12 @@ class Runner():
         lib = libobjs[0]
 
         print('= Resolving functions in {}'.format(lib.fullname))
-        resolved = self.store.resolve_functions(lib)
+        resolved = processing.resolve_functions(self.store, lib)
         for key, value in resolved.items():
             print("-- Found {} in {}".format(key, value))
 
     def count_and_print_resolved(self, do_print=True):
-        collection = self.store.resolve_all_functions()
+        collection = processing.resolve_all_functions(self.store)
         histo_percent = collections.defaultdict(int)
         if do_print:
             print('= Count of all external function uses:')
@@ -153,9 +160,9 @@ class Runner():
                     print(pctg, lib)
                 histo_percent[pctg] += 1
 
-        with open('import_use_histo.csv', 'w') as fd:
+        with open('import_use_histo.csv', 'w') as fdesc:
             for key, value in sorted(histo_percent.items()):
-                fd.write('{},{}\n'.format(key, value))
+                fdesc.write('{},{}\n'.format(key, value))
 
     def do_import_export_histograms(self):
         libobjs = self._get_library_objects()
@@ -172,13 +179,13 @@ class Runner():
             if num_imports > 3000:
                 print('Importer {}: {}'.format(lib.fullname, num_imports))
 
-        with open('imports_histo.csv', 'w') as fd:
+        with open('imports_histo.csv', 'w') as fdesc:
             for key, value in sorted(histo_in.items()):
-                fd.write('{},{}\n'.format(key, value))
+                fdesc.write('{},{}\n'.format(key, value))
 
-        with open('exports_histo.csv', 'w') as fd:
+        with open('exports_histo.csv', 'w') as fdesc:
             for key, value in sorted(histo_out.items()):
-                fd.write('{},{}\n'.format(key, value))
+                fdesc.write('{},{}\n'.format(key, value))
 
     def print_store_keys(self):
         for key, _ in sorted(self.store.items()):
@@ -187,11 +194,6 @@ class Runner():
 if __name__ == '__main__':
     runner = Runner()
     runner.process()
-#    runner.print_needed_paths()
 
-    # Resolving functions only makes sense if all libraries have been processed
-#    if not runner.args.single:
-#        runner.resolve_and_print_one()
-
-#    runner.count_and_print_resolved(do_print=False)
-    runner.do_import_export_histograms()
+    #runner.count_and_print_resolved(do_print=False)
+    #runner.do_import_export_histograms()

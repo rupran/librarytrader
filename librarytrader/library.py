@@ -104,6 +104,7 @@ class Library:
     def _release_elffile(self):
         del self._elffile
         self._fd.close()
+        del self._fd
 
     def is_compatible(self, other):
         hdr = self.elfheader
