@@ -177,6 +177,7 @@ class LibraryStore(BaseStore):
 
                 if function in imp_lib.exports:
                     result[function] = needed_path
+                    library.imports[function] = needed_path
                     logging.debug('|- found \'%s\' in %s', function,
                                   needed_path)
                     found = True
@@ -200,12 +201,14 @@ class LibraryStore(BaseStore):
             for function in lib.exports:
                 result[lib.fullname][function] = []
 
+        logging.info('Resolving functions between libraries...')
         # Count references across libraries
         for lib in libobjs:
             resolved = self.resolve_functions(lib)
             for function, fullname in resolved.items():
                 result[fullname][function].append(lib.fullname)
 
+        logging.info('... done!')
         return result
 
     def dump(self, output_file):

@@ -49,6 +49,8 @@ class Runner():
                             help='JSON file to load previously exported mapping')
         parser.add_argument('-s', '--store', action='store',
                             help='Store calculated mapping to JSON file')
+        parser.add_argument('-r', '--resolve-functions', action='store_true',
+                            help='Resolve imported functions to their origin')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -92,6 +94,9 @@ class Runner():
                 self.store.resolve_libs_recursive_by_path(path)
 
         logging.info('Number of entries: %d', len(self.store))
+
+        if self.args.resolve_functions:
+            self.store.resolve_all_functions()
 
         if self.args.store:
             self.store.dump(self.args.store)
