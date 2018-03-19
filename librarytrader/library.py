@@ -19,9 +19,7 @@ import collections
 import logging
 import os
 
-from elftools.elf.dynamic import DynamicSection
 from elftools.elf.elffile import ELFFile
-from elftools.elf.sections import SymbolTableSection
 
 class Library:
 
@@ -47,60 +45,60 @@ class Library:
 
     def parse_symtab(self):
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
+        section = self._elffile.get_section_by_name('.dynsym')
+        if not section:
+            return
 
-        for section in self._elffile.iter_sections():
-            if isinstance(section, SymbolTableSection):
-                if section.name == '.symtab':
-                    continue
-                for _, symbol in enumerate(section.iter_symbols()):
-                    shndx = symbol['st_shndx']
-                    symbol_type = symbol['st_info']['type']
-                    symbol_bind = symbol['st_info']['bind']
+        for _, symbol in enumerate(section.iter_symbols()):
+            shndx = symbol['st_shndx']
+            symbol_type = symbol['st_info']['type']
+            symbol_bind = symbol['st_info']['bind']
 
-                    if symbol_type == 'STT_FUNC':
-                        pass
-                    elif (ei_osabi == 'ELFOSABI_LINUX' or \
-                          ei_osabi == 'ELFOSABI_SYSV') \
-                            and symbol_type == 'STT_LOOS':
-                        # TODO: generic check for use of LOOS/IFUNC. libc uses
-                        # STT_IFUNC (which is the same value as STT_LOOS) to
-                        # provide multiple, architecture-specific
-                        # implementations of stuff like memcpy, strcpy etc.
-                        pass
-                    else:
-                        continue
+            if symbol_type == 'STT_FUNC':
+                pass
+            elif (ei_osabi == 'ELFOSABI_LINUX' or \
+                    ei_osabi == 'ELFOSABI_SYSV') \
+                    and symbol_type == 'STT_LOOS':
+                # TODO: generic check for use of LOOS/IFUNC. libc uses
+                # STT_IFUNC (which is the same value as STT_LOOS) to
+                # provide multiple, architecture-specific
+                # implementations of stuff like memcpy, strcpy etc.
+                pass
+            else:
+                continue
 
-                    if symbol_bind == 'STB_LOCAL':
-                        continue
+            if symbol_bind == 'STB_LOCAL':
+                continue
 
-                    if shndx == 'SHN_UNDEF':
-                        self.imports[symbol.name] = None
-                    elif self.elfheader['e_type'] != 'ET_EXEC':
-                        self.exports[symbol.name] = None
+            if shndx == 'SHN_UNDEF':
+                self.imports[symbol.name] = None
+            elif self.elfheader['e_type'] != 'ET_EXEC':
+                self.exports[symbol.name] = None
 
     def parse_dynamic(self):
-        for section in self._elffile.iter_sections():
-            if not isinstance(section, DynamicSection):
-                continue
-            for tag in section.iter_tags():
-                if tag.entry.d_tag == 'DT_NEEDED':
-                    self.needed_libs[tag.needed] = None
-                elif tag.entry.d_tag == 'DT_RPATH':
-                    self.rpaths = [rpath.replace("$ORIGIN",
-                                                 os.path.dirname(self.fullname))
-                                   for rpath in tag.rpath.split(':')]
-                elif tag.entry.d_tag == 'DT_RUNPATH':
-                    self.runpaths = [rpath.replace("$ORIGIN",
-                                                   os.path.dirname(self.fullname))
-                                     for rpath in tag.runpath.split(':')]
-                elif tag.entry.d_tag == 'DT_SONAME':
-                    self.soname = tag.soname
-                elif tag.entry.d_tag == 'DT_FLAGS_1':
-                    # PIE
-                    if tag.entry.d_val & 0x8000000:
-                        logging.info('\'%s\' is PIE, dropping exports...',
-                                        self.fullname)
-                        self.exports.clear()
+        section = self._elffile.get_section_by_name('.dynamic')
+        if not section:
+            return
+
+        for tag in section.iter_tags():
+            if tag.entry.d_tag == 'DT_NEEDED':
+                self.needed_libs[tag.needed] = None
+            elif tag.entry.d_tag == 'DT_RPATH':
+                self.rpaths = [rpath.replace("$ORIGIN",
+                                             os.path.dirname(self.fullname))
+                               for rpath in tag.rpath.split(':')]
+            elif tag.entry.d_tag == 'DT_RUNPATH':
+                self.runpaths = [rpath.replace("$ORIGIN",
+                                               os.path.dirname(self.fullname))
+                                 for rpath in tag.runpath.split(':')]
+            elif tag.entry.d_tag == 'DT_SONAME':
+                self.soname = tag.soname
+            elif tag.entry.d_tag == 'DT_FLAGS_1':
+                # PIE
+                if tag.entry.d_val & 0x8000000:
+                    logging.info('\'%s\' is PIE, dropping exports...',
+                                 self.fullname)
+                    self.exports.clear()
 
     def parse_functions(self, release=False):
         self.parse_symtab()
