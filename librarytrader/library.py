@@ -16,6 +16,7 @@
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
 import collections
+import logging
 import os
 
 from elftools.elf.dynamic import DynamicSection
@@ -94,6 +95,12 @@ class Library:
                                      for rpath in tag.runpath.split(':')]
                 elif tag.entry.d_tag == 'DT_SONAME':
                     self.soname = tag.soname
+                elif tag.entry.d_tag == 'DT_FLAGS_1':
+                    # PIE
+                    if tag.entry.d_val & 0x8000000:
+                        logging.info('\'%s\' is PIE, dropping exports...',
+                                        self.fullname)
+                        self.exports.clear()
 
     def parse_functions(self, release=False):
         self.parse_symtab()
@@ -104,6 +111,7 @@ class Library:
     def _release_elffile(self):
         del self._elffile
         self._fd.close()
+        del self._fd
 
     def is_compatible(self, other):
         hdr = self.elfheader
