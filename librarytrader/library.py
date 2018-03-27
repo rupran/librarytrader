@@ -1,4 +1,4 @@
-# Copyright 2017, Andreas Ziegler <andreas.ziegler@fau.de>
+# Copyright 2017-2018, Andreas Ziegler <andreas.ziegler@fau.de>
 #
 # This file is part of librarytrader.
 #
@@ -23,15 +23,15 @@ from elftools.elf.elffile import ELFFile
 
 class Library:
 
-    def __init__(self, filename, load_elffile=True):
+    def __init__(self, filename, load_elffile=True, parse=False):
         if not os.path.isabs(filename):
             raise ValueError("{} is no absolute path".format(filename))
 
         self.fullname = filename
 
         if load_elffile:
-            self._fd = open(filename, 'rb')
-            self._elffile = ELFFile(self._fd)
+            self.fd = open(filename, 'rb')
+            self._elffile = ELFFile(self.fd)
             self.elfheader = self._elffile.header
 
         self.exports = collections.OrderedDict()
@@ -42,6 +42,11 @@ class Library:
         self.rpaths = []
         self.runpaths = []
         self.soname = None
+
+        self.calls = {}
+
+        if parse:
+            self.parse_functions()
 
     def parse_symtab(self):
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
@@ -108,14 +113,32 @@ class Library:
 
     def _release_elffile(self):
         del self._elffile
-        self._fd.close()
-        del self._fd
+        self.fd.close()
+        del self.fd
 
     def is_compatible(self, other):
         hdr = self.elfheader
         o_hdr = other.elfheader
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']
+
+    def get_function_ranges(self):
+        ranges = collections.defaultdict(list)
+        dynsym = self._elffile.get_section_by_name('.dynsym')
+        if not dynsym:
+            return ranges
+        for name in self.exports:
+            # Could me more than one => symbol versioning. One probably has the
+            # high bit set in .gnu.version at the corresponding offset
+            # TODO: check that!
+            # For now, evaluate them all
+            syms = dynsym.get_symbol_by_name(name)
+            for sym in syms:
+                start = sym.entry['st_value']
+                size = sym.entry['st_size']
+                ranges[name].append((start, size))
+
+        return ranges
 
     def summary(self):
         return '{}: {} imports, {} exports, {} needed libs, ' \

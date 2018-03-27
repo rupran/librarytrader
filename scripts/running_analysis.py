@@ -28,6 +28,7 @@ import sys
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from librarytrader.librarystore import LibraryStore
+from librarytrader.interface_calls import resolve_calls
 
 class Runner():
 
@@ -51,6 +52,8 @@ class Runner():
                             help='Store calculated mapping to JSON file')
         parser.add_argument('-r', '--resolve-functions', action='store_true',
                             help='Resolve imported functions to their origin')
+        parser.add_argument('-i', '--interface_calls', action='store_true',
+                            help='Calculate calls between interface functions')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -98,8 +101,14 @@ class Runner():
         if self.args.resolve_functions:
             self.store.resolve_all_functions()
 
+        if self.args.interface_calls:
+            self._process_interface_calls()
+
         if self.args.store:
             self.store.dump(self.args.store)
+
+    def _process_interface_calls(self):
+        return resolve_calls(self.store)
 
     def _get_library_objects(self):
         return list(val for (key, val) in self.store.items()

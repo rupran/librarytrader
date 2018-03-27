@@ -7,6 +7,7 @@ A library to gather imports and exports of ELF shared libraries
 ## Prerequisites
 - Python 3
 - pyelftools, available from **pip** or at https://github.com/eliben/pyelftools
+- capstone, available from **pip** or at https://github.com/aquynh/capstone
 
 ## How to use it?
 

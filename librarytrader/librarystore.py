@@ -207,6 +207,9 @@ class LibraryStore(BaseStore):
             resolved = self.resolve_functions(lib)
             for function, fullname in resolved.items():
                 result[fullname][function].append(lib.fullname)
+            for caller, calls in lib.calls.items():
+                for name in calls:
+                    result[lib.fullname][name].append(lib.fullname)
 
         logging.info('... done!')
         return result
@@ -233,6 +236,11 @@ class LibraryStore(BaseStore):
                 for lib, path in value.all_imported_libs.items():
                     lib_dict["all_imported_libs"].append([lib, path])
                 lib_dict["rpaths"] = value.rpaths
+                # We can't dump sets, so convert to a list
+                calls_dict = {}
+                for caller, calls in value.calls.items():
+                    calls_dict[caller] = list(calls)
+                lib_dict["calls"] = calls_dict
 
             output[key] = lib_dict
 
@@ -265,6 +273,8 @@ class LibraryStore(BaseStore):
                         all_imported_libs_dict[lib] = path
                     library.all_imported_libs = all_imported_libs_dict
                     library.rpaths = value["rpaths"]
+                    for caller, calls in value["calls"].items():
+                        library.calls[caller] = set(calls)
                     self._add_library(key, library)
 
         logging.debug('... done with %s entries', len(self))
