@@ -35,16 +35,16 @@ class LibraryStore(BaseStore):
     def _get_or_create_library(self, path):
         link_path = None
 
-        if os.path.islink(path) or \
-                os.path.abspath(os.path.dirname(path)) != \
-                os.path.realpath(os.path.abspath(os.path.dirname(path))):
-            link_path = path
-            path = os.path.realpath(path)
-
-        if path in self:
-            return (self.get_from_path(path), link_path)
-
         try:
+            if os.path.islink(path) or \
+                    os.path.abspath(os.path.dirname(path)) != \
+                    os.path.realpath(os.path.abspath(os.path.dirname(path))):
+                link_path = path
+                path = os.path.realpath(path)
+
+            if path in self:
+                return (self.get_from_path(path), link_path)
+
             return (Library(path), link_path)
         except (ELFError, OSError) as err:
             logging.error('\'%s\' => %s', path, err)
