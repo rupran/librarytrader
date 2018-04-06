@@ -98,11 +98,11 @@ class Runner():
 
         logging.info('Number of entries: %d', len(self.store))
 
-        if self.args.resolve_functions:
-            self.store.resolve_all_functions()
-
         if self.args.interface_calls:
             self._process_interface_calls()
+
+        if self.args.resolve_functions:
+            self.store.resolve_all_functions()
 
         if self.args.store:
             self.store.dump(self.args.store)
