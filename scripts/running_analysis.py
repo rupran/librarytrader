@@ -36,6 +36,7 @@ class Runner():
         self._parse_arguments()
         self.store = LibraryStore()
         self.paths = self._get_paths()
+        self.all_resolved_functions = None
 
     def _parse_arguments(self):
         parser = argparse.ArgumentParser(description='Evaluate imports and ' \
@@ -54,6 +55,9 @@ class Runner():
                             help='Resolve imported functions to their origin')
         parser.add_argument('-i', '--interface_calls', action='store_true',
                             help='Calculate calls between interface functions')
+        parser.add_argument('-t', '--transitive-users', action='store_true',
+                            help='Propagate users over interface calls ' \
+                            '(implies -r)')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -102,10 +106,18 @@ class Runner():
             self._process_interface_calls()
 
         if self.args.resolve_functions:
-            self.store.resolve_all_functions()
+            self.get_all_resolved_functions()
+
+        if self.args.transitive_users:
+            self._propagate_users_through_calls()
 
         if self.args.store:
             self.store.dump(self.args.store)
+
+    def _propagate_users_through_calls(self):
+        result = self.store.propagate_call_usage(self.get_all_resolved_functions())
+        self.all_resolved_functions = result
+        return result
 
     def _process_interface_calls(self):
         return resolve_calls(self.store)
@@ -116,7 +128,7 @@ class Runner():
 
     def print_needed_paths(self):
         # Demonstration for needed paths resolution
-        libobjs = self._get_library_objects()
+        libobjs = self.store.get_library_objects()
         lib = libobjs[0]
 
         print('= Needed libraries for {}'.format(lib.fullname))
@@ -135,9 +147,14 @@ class Runner():
             for num, count in sorted(histo.items()):
                 fd.write('{},{}\n'.format(num, count))
 
+    def get_all_resolved_functions(self):
+        if self.all_resolved_functions is None:
+            self.all_resolved_functions = self.store.resolve_all_functions()
+        return self.all_resolved_functions
+
     def resolve_and_print_one(self):
         # Demonstration for resolving
-        libobjs = self._get_library_objects()
+        libobjs = self.store.get_library_objects()
         lib = libobjs[0]
 
         print('= Resolving functions in {}'.format(lib.fullname))
@@ -146,7 +163,7 @@ class Runner():
             print("-- Found {} in {}".format(key, value))
 
     def count_and_print_resolved(self, do_print=True):
-        collection = self.store.resolve_all_functions()
+        collection = self.get_all_resolved_functions()
         histo_percent = collections.defaultdict(int)
         if do_print:
             print('= Count of all external function uses:')
@@ -172,7 +189,7 @@ class Runner():
                 fd.write('{},{}\n'.format(key, value))
 
     def do_import_export_histograms(self):
-        libobjs = self._get_library_objects()
+        libobjs = self.store.get_library_objects()
 
         histo_in = collections.defaultdict(int)
         histo_out = collections.defaultdict(int)

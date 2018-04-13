@@ -150,6 +150,43 @@ class LibraryStore(BaseStore):
     def resolve_libs_recursive_by_path(self, path):
         self.resolve_libs_recursive(None, path)
 
+    def get_library_objects(self):
+        return list(val for (key, val) in self.items()
+                    if not isinstance(val, str))
+
+    def get_transitive_calls(self, library, function, cache=None, working_on=None):
+        if cache is None:
+            cache = {}
+        if working_on is None:
+            working_on = set()
+
+        libname = library.fullname
+        if libname not in cache:
+            cache[libname] = {}
+        if function in cache[libname]:
+            return cache[libname][function]
+
+        # No cache hit, calculate it
+        local_cache = set()
+
+        # If there are no calls, return the empty set
+        if function not in library.calls:
+            cache[libname][function] = set()
+            return set()
+
+        working_on.add(function)
+        for callee in library.calls[function]:
+            if callee in working_on:
+                continue
+            local_cache.add(callee)
+            subcalls = self.get_transitive_calls(library, callee, cache,
+                                                 working_on)
+            local_cache.update(subcalls)
+        working_on.remove(function)
+
+        cache[libname][function] = local_cache
+        return cache[libname][function]
+
     def resolve_functions(self, library):
         if isinstance(library, str):
             name = library
@@ -178,6 +215,8 @@ class LibraryStore(BaseStore):
                 if function in imp_lib.exports:
                     result[function] = needed_path
                     library.imports[function] = needed_path
+                    imp_lib.add_export_user(function, library.fullname)
+
                     logging.debug('|- found \'%s\' in %s', function,
                                   needed_path)
                     found = True
@@ -192,8 +231,7 @@ class LibraryStore(BaseStore):
 
     def resolve_all_functions(self):
         result = {}
-        libobjs = list(val for (key, val) in self.items()
-                       if not isinstance(val, str))
+        libobjs = self.get_library_objects()
 
         # Initialize data for known libraries
         for lib in libobjs:
@@ -204,14 +242,43 @@ class LibraryStore(BaseStore):
         logging.info('Resolving functions between libraries...')
         # Count references across libraries
         for lib in libobjs:
-            resolved = self.resolve_functions(lib)
-            for function, fullname in resolved.items():
+            import_to_path = self.resolve_functions(lib)
+            for function, fullname in import_to_path.items():
                 result[fullname][function].append(lib.fullname)
-            for caller, calls in lib.calls.items():
-                for name in calls:
-                    result[lib.fullname][name].append(lib.fullname)
-
         logging.info('... done!')
+
+        return result
+
+    def propagate_call_usage(self, result=None):
+        if result is None:
+            result = self.resolve_all_functions()
+
+        logging.info('Propagating export users through calls...')
+        # Propagate usage information inside libraries
+        for lib in self.get_library_objects():
+            logging.debug('Propagating in %s', lib.fullname)
+            # Starting points are all referenced exports
+            worklist = collections.deque(function for function, users
+                                         in lib.exports.items() if users)
+            while worklist:
+                # Take one function and get its current users
+                cur = worklist.popleft()
+                users = lib.exports[cur]
+                # Add users to transitively called functions
+                for trans_callee in self.get_transitive_calls(lib, cur):
+                    for user in users:
+                        # Add user to callee if not already present
+                        if not lib.add_export_user(trans_callee, user):
+                            continue
+                        # Draw internal reference
+                        lib.add_export_user(trans_callee, lib.fullname)
+                        # Only add to worklist if not queued already
+                        if trans_callee in worklist:
+                            worklist.remove(trans_callee)
+                        worklist.append(trans_callee)
+                        result[lib.fullname][trans_callee].append(user)
+        logging.info('... done!')
+
         return result
 
     def dump(self, output_file):
@@ -275,6 +342,7 @@ class LibraryStore(BaseStore):
                     library.rpaths = value["rpaths"]
                     for caller, calls in value["calls"].items():
                         library.calls[caller] = set(calls)
+                    #print('{}: {}'.format(key, sorted(value["calls"].items())))
                     self._add_library(key, library)
 
         logging.debug('... done with %s entries', len(self))

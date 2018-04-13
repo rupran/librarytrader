@@ -122,6 +122,14 @@ class Library:
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']
 
+    def add_export_user(self, name, user_path):
+        if self.exports[name] is None:
+            self.exports[name] = []
+        if user_path not in self.exports[name]:
+            self.exports[name].append(user_path)
+            return True
+        return False
+
     def get_function_ranges(self):
         ranges = collections.defaultdict(list)
         dynsym = self._elffile.get_section_by_name('.dynsym')
