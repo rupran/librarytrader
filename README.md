@@ -1,4 +1,7 @@
 # librarytrader
+
+[![Build Status](https://travis-ci.org/rupran/librarytrader.svg?branch=master)](https://travis-ci.org/rupran/librarytrader)
+
 A library to gather imports and exports of ELF shared libraries
 
 ## Prerequisites
