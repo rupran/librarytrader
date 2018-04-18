@@ -1,22 +1,55 @@
+import logging
 import os
+import tempfile
 import unittest
 
 from librarytrader.library import Library
 from librarytrader.librarystore import LibraryStore
+from librarytrader.interface_calls import disassemble_capstone, \
+    disassemble_objdump, resolve_calls, resolve_calls_in_library
 
 FILE_PATH = 'test/test_files/'
+RPATH_DIR = FILE_PATH + 'rpath_dir/'
+RPATH_SUB = RPATH_DIR + 'rpath_subdir/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
-TEST_LIBRARY  = FILE_PATH + 'mock.so'
+TEST_LIBRARY  = FILE_PATH + 'libmock.so'
+TEST_BINARY   = FILE_PATH + 'user'
+TEST_BIN_PIE  = FILE_PATH + 'user_pie'
+TEST_RPATH    = FILE_PATH + 'librpath_one.so'
+TEST_RPATH_2  = RPATH_DIR + 'librpath_two.so'
+TEST_RPATH_3  = RPATH_SUB + 'librpath_three.so'
+TEST_RUNPATH  = RPATH_SUB + 'librunpath.so'
+TEST_LD_PATHS = RPATH_DIR + 'libldd_search.so'
+TEST_NOLDCONF = FILE_PATH + 'libnoldconfig.so'
 
-def create_store_and_lib():
+def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
+                         resolve_libs_recursive=False, call_resolve=False):
     store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
-    lib = Library(os.path.abspath(TEST_LIBRARY))
+    lib = Library(os.path.abspath(libpath), parse=parse)
+    if resolve_libs_recursive:
+        store.resolve_libs_recursive(lib)
+    if call_resolve:
+        resolve_calls(store)
     return store, lib
-
 
 class TestLibrary(unittest.TestCase):
 
-    def test_resolve_libs_single(self):
+    def test_0_abspath_required(self):
+        # We need absolute paths to construct libraries, so check that
+        # relative paths fail
+        self.assertRaises(ValueError, Library, TEST_LIBRARY)
+
+    def test_0_drop_pie_exports(self):
+        user_pie = Library(os.path.abspath(TEST_BIN_PIE))
+        # Parsing .symtab should identify exports
+        user_pie.parse_symtab()
+        self.assertNotEqual(len(user_pie.exports.keys()), 0)
+
+        # After parsing .dynamic the exports should be dropped
+        user_pie.parse_dynamic()
+        self.assertEquals(len(user_pie.exports.keys()), 0)
+
+    def test_0_resolve_libs_single(self):
         store, lib = create_store_and_lib()
 
         store.resolve_libs_single(lib)
@@ -31,7 +64,23 @@ class TestLibrary(unittest.TestCase):
         # No recursion, only parameters are in store
         self.assertEqual(len(store), 1)
 
-    def test_resolve_libs_recursive(self):
+    def test_0_resolve_libs_single_by_path(self):
+        store, _ = create_store_and_lib()
+
+        store.resolve_libs_single_by_path(os.path.abspath(TEST_LIBRARY))
+        lib = store[os.path.abspath(TEST_LIBRARY)]
+
+        # We need one lib, libc.so.6, linking to libc-2.23.so
+        self.assertEqual(len(lib.needed_libs), 1)
+
+        import_name, path = list(lib.needed_libs.items())[0]
+        self.assertEqual(import_name, 'libc.so.6')
+        self.assertEqual(path, os.path.abspath(FILE_PATH + 'libc-2.23.so'))
+
+        # No recursion, only parameters are in store
+        self.assertEqual(len(store), 1)
+
+    def test_1_resolve_libs_recursive(self):
         store, lib = create_store_and_lib()
 
         store.resolve_libs_recursive(lib)
@@ -50,11 +99,167 @@ class TestLibrary(unittest.TestCase):
                                   if isinstance(val, str))), 2)
         # ... two of them are links
 
+    def test_1_resolve_libs_recursive_by_path(self):
+        store, _ = create_store_and_lib()
+
+        store.resolve_libs_recursive_by_path(os.path.abspath(TEST_LIBRARY))
+        lib = store[os.path.abspath(TEST_LIBRARY)]
+
+        # We need one lib, libc.so.6, linking to libc-2.23.so
+        self.assertEqual(len(lib.needed_libs), 1)
+
+        self.assertEqual(len(store), 5)
+        # Stored items are:
+        # mock.so
+        # libc.so.6 -> libc-2.23.so
+        # libc-2.23.so
+        # ld-linux-x86-64.so.2 -> ld-2.23.so
+        # ld-2.23.so
+        self.assertEqual(len(list(key for (key, val) in store.items()
+                                  if isinstance(val, str))), 2)
+        # ... two of them are links
+
+    def test_2_resolution_with_rpaths_and_runpaths(self):
+        store, one = create_store_and_lib(TEST_RPATH, parse=True,
+                                          resolve_libs_recursive=True)
+
+        # librpath_one.so has RPATH for rpath_dir/ and rpath_dir/rpath_subdir
+        # and needs librpath_two.so -> local rpath discovery
+        # rpath_dir/librpath_two.so has _no_ RPATH but needs librpath_three.so
+        # which is at rpath_dir/rpath_subdir -> inherited discovery
+        # rpath_dir/rpath_subdir/librpath_three.so has RUNPATH '.' and needs
+        # librunpath.so -> runpath discovery
+        self.assertEquals(os.path.abspath(TEST_RPATH_2),
+                          one.needed_libs['librpath_two.so'])
+
+        two = store[os.path.abspath(TEST_RPATH_2)]
+        self.assertEquals(os.path.abspath(TEST_RPATH_3),
+                          two.needed_libs['librpath_three.so'])
+
+        three = store[os.path.abspath(TEST_RPATH_3)]
+        self.assertEquals(os.path.abspath(TEST_RUNPATH),
+                          three.needed_libs['librunpath.so'])
+
+    def test_2_resolution_with_fs_search(self):
+        store, search = create_store_and_lib(TEST_LD_PATHS,
+                                             resolve_libs_recursive=True)
+
+        # TEST_NOLDCONF is at a location which is a basepath in LDCONFIG_FILE
+        # but not mentioned directly. search also has no RPATH or RUNPATH set
+        # so our resolution has to do a file system search.
+
+        # Make sure we found the library
+        self.assertEquals(os.path.abspath(TEST_NOLDCONF),
+                          search.needed_libs['libnoldconfig.so'])
+
+    def test_3_resolve_imports_to_library(self):
+        store, lib = create_store_and_lib(resolve_libs_recursive=True)
+
         # Check if resolving functions works
         resol = store.resolve_functions(lib)
         self.assertEqual(len(resol), 2)
-        self.assertTrue('fputs' in resol)
+        self.assertTrue('malloc' in resol)
         # the other one is __cxa_finalize, imported as a weak symbol from libc
+
+    def test_3_resolve_imports_to_library_by_path(self):
+        store, lib = create_store_and_lib(resolve_libs_recursive=True)
+
+        # Check if resolving functions by name works
+        resol = store.resolve_functions(lib.fullname)
+        self.assertEqual(len(resol), 2)
+        self.assertTrue('malloc' in resol)
+        # the other one is __cxa_finalize, imported as a weak symbol from libc
+
+    def test_4_resolve_calls_by_capstone(self):
+        store, lib = create_store_and_lib()
+        lib.parse_functions()
+
+        calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
+
+        self.assertEqual(len(calls), 2)
+        self.assertDictEqual(calls,
+                             {'external_caller': set(['external']),
+                              'second_level_caller': set(['external_caller'])})
+
+    def test_4_resolve_calls_by_objdump(self):
+        store, lib = create_store_and_lib()
+        lib.parse_functions()
+
+        calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
+
+        self.assertEqual(len(calls), 2)
+        self.assertDictEqual(calls,
+                             {'external_caller': set(['external']),
+                              'second_level_caller': set(['external_caller'])})
+
+    def test_4_resolve_calls_integrated(self):
+        store, lib = create_store_and_lib(resolve_libs_recursive=True)
+
+        result = resolve_calls(store)
+        # calls for mock.so, libc-2.23.so and ld-2.23.so
+        self.assertEqual(len(result), 3)
+        self.assertDictEqual(dict(store[lib.fullname].calls),
+                             {'external_caller': set(['external']),
+                              'second_level_caller': set(['external_caller'])})
+
+    def test_5_transitive_calls(self):
+        store, lib = create_store_and_lib(resolve_libs_recursive=True,
+                                          call_resolve=True)
+
+        result = store.get_transitive_calls(lib, 'second_level_caller')
+        # Check that transitive callees are returned
+        self.assertSetEqual(result, set(['external_caller', 'external']))
+
+    def test_6_propagate_calls(self):
+        store, binary = create_store_and_lib(TEST_BINARY,
+                                             resolve_libs_recursive=True,
+                                             call_resolve=True)
+        lib = Library(os.path.abspath(TEST_LIBRARY))
+
+        resolved_functions = store.resolve_all_functions()
+        result = store.propagate_call_usage(resolved_functions)
+        # Check if all transitively called functions have the binary as their user
+        self.assertIn(binary.fullname, result[lib.fullname]['external'])
+        self.assertIn(binary.fullname, result[lib.fullname]['external_caller'])
+        self.assertIn(binary.fullname, result[lib.fullname]['second_level_caller'])
+
+    def test_7_store_load(self):
+        store, binary = create_store_and_lib(TEST_BINARY,
+                                             resolve_libs_recursive=True,
+                                             call_resolve=True)
+        lib = Library(os.path.abspath(TEST_LIBRARY))
+
+        resolved_functions = store.resolve_all_functions()
+        store.propagate_call_usage(resolved_functions)
+
+        # Create a temporary file, close it (we only need the path) and dump
+        fd, name = tempfile.mkstemp()
+        os.close(fd)
+        store.dump(name)
+
+        # Reload into an empty store
+        new_store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
+        new_store.load(name)
+
+        # The file is no longer needed, delete it
+        os.remove(name)
+
+        # Assert restoration of store
+        self.assertEqual(store.keys(), new_store.keys())
+        self.assertIn(lib.fullname, new_store.keys())
+        self.assertIn(binary.fullname, new_store.keys())
+
+        # Assert restoration of needed_libs
+        self.assertIn(lib.fullname,
+                      new_store[binary.fullname].needed_libs.values())
+
+        # Assert restoration of calls
+        self.assertIn(binary.fullname,
+                      new_store[lib.fullname].exports['external'])
+        self.assertIn(binary.fullname,
+                      new_store[lib.fullname].exports['external_caller'])
+        self.assertIn(binary.fullname,
+                      new_store[lib.fullname].exports['second_level_caller'])
 
 if __name__ == '__main__':
     unittest.main()

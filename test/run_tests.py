@@ -9,6 +9,9 @@ def main():
 
     tests = unittest.TestLoader().discover('test', 'test*.py', 'test')
     result = unittest.TextTestRunner().run(tests)
+
+    subprocess.call(['make', '-C', 'test/test_files', 'clean'])
+
     if result.wasSuccessful():
         return 0
     else:

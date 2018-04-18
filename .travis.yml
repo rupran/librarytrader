@@ -6,4 +6,7 @@ install:
   - pip install .
 git:
   submodules: false
+before_script:
+  # Workaround for buggy pip installation of capstone
+  - LONGVER=$(python --version 2>&1 | sed -e 's/\ //g' -e 's/P/p/g'); VER=$(echo $LONGVER | cut -c1-9); WRONGFILE=/home/travis/virtualenv/$LONGVER/lib/$VER/site-packages/home/travis/virtualenv/$LONGVER/lib/$VER/site-packages/capstone/libcapstone.so; TARGET=/home/travis/virtualenv/$LONGVER/lib/$VER/site-packages/capstone/; if [ -f $WRONGFILE ]; then cp $WRONGFILE $TARGET; fi
 script: python ./test/run_tests.py

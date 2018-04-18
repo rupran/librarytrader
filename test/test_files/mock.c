@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <stdlib.h>
 
 static int state = 0;
 
@@ -10,6 +10,18 @@ void also_external(void){
     state = 1;
 }
 
-static int internal(char *bar){
-    return fputs("mock", stdin);
+int external_caller(void){
+    return external(state);
+}
+
+int second_level_caller(void){
+    return external_caller();
+}
+
+static void* internal(int n){
+    return malloc(n * 200);
+}
+
+void* ref_internal(){
+    return internal(42);
 }
