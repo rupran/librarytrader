@@ -51,7 +51,7 @@ class LDResolve(BaseStore):
                 self._add_or_append(libname, fullpath)
 
                 basepath = os.path.join(os.sep, *fullpath.split('/')[:-1])
-                if not basepath in self.basepaths:
+                if basepath not in self.basepaths:
                     self.basepaths.add(basepath)
             else:
                 logging.info('ill-formed line \'%s\'', line)
