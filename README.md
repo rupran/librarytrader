@@ -61,9 +61,11 @@ currently clears any content the `LibraryStore` might hold.
 After evaluating or loading the dependency tree, calling
 `resolve_functions(elf)` on `LibraryStore` will (try to) resolve all imported
 functions to the absolute paths of the libraries which provide the functions.
-The mapping is returned as an `OrderedDict`. `resolve_functions` can also be
-called with an absolute path to a library, in which case it will internally try
-to resolve this path to a `Library` object in the `LibraryStore`.
+After the resolution has finished, every function in the `imports` dictionary
+is mapped to the absolute path of the library where the function is located.
+`resolve_functions` can also be called with an absolute path to a library, in
+which case it will internally try to resolve this path to a `Library` object in
+the `LibraryStore`.
 
 ## Analyzing a collection of object files
 

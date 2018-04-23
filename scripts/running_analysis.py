@@ -117,17 +117,34 @@ class Runner():
         if self.args.store:
             self.store.dump(self.args.store)
 
-    def _propagate_users_through_calls(self):
-        result = self.store.propagate_call_usage(self.get_all_resolved_functions(), self.args.all_entries)
-        self.all_resolved_functions = result
+    def _create_export_user_mapping(self):
+        result = {}
+        if self.args.all_entries:
+            libobjs = self.store.get_library_objects()
+        else:
+            libobjs = self.store.get_all_reachable_from_executables()
+
+        for lib in libobjs:
+            result[lib.fullname] = {}
+            for function, users in lib.exports.items():
+                result[lib.fullname][function] = users if users else []
+
         return result
 
     def _process_interface_calls(self):
         return resolve_calls(self.store)
 
-    def _get_library_objects(self):
-        return list(val for (key, val) in self.store.items()
-                    if not isinstance(val, str))
+    def get_all_resolved_functions(self):
+        if self.all_resolved_functions is None:
+            self.store.resolve_all_functions(self.args.all_entries)
+            self.all_resolved_functions = self._create_export_user_mapping()
+        return self.all_resolved_functions
+
+    def _propagate_users_through_calls(self):
+        self.get_all_resolved_functions()
+        self.store.propagate_call_usage(self.args.all_entries)
+        self.all_resolved_functions = self._create_export_user_mapping()
+        return self.all_resolved_functions
 
     def print_needed_paths(self):
         # Demonstration for needed paths resolution
@@ -150,20 +167,15 @@ class Runner():
             for num, count in sorted(histo.items()):
                 fd.write('{},{}\n'.format(num, count))
 
-    def get_all_resolved_functions(self):
-        if self.all_resolved_functions is None:
-            self.all_resolved_functions = self.store.resolve_all_functions(self.args.all_entries)
-        return self.all_resolved_functions
-
     def resolve_and_print_one(self):
         # Demonstration for resolving
         libobjs = self.store.get_library_objects()
         lib = libobjs[0]
 
         print('= Resolving functions in {}'.format(lib.fullname))
-        resolved = self.store.resolve_functions(lib)
-        for key, value in resolved.items():
-            print("-- Found {} in {}".format(key, value))
+        self.store.resolve_functions(lib)
+        for function, path in lib.imports.items():
+            print("-- Found {} in {}".format(function, path))
 
     def count_and_print_resolved(self, do_print=True):
         collection = self.get_all_resolved_functions()

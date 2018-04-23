@@ -230,8 +230,6 @@ class LibraryStore(BaseStore):
 
         logging.debug('Resolving functions in %s', library.fullname)
 
-        result = collections.OrderedDict()
-
         for function in library.imports:
             found = False
             for needed_name, needed_path in library.all_imported_libs.items():
@@ -242,7 +240,6 @@ class LibraryStore(BaseStore):
                     continue
 
                 if function in imp_lib.exports:
-                    result[function] = needed_path
                     library.imports[function] = needed_path
                     imp_lib.add_export_user(function, library.fullname)
 
@@ -256,40 +253,26 @@ class LibraryStore(BaseStore):
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 
-        return result
-
     def resolve_all_functions(self, all_entries=False):
-        result = {}
         if all_entries:
             libobjs = self.get_library_objects()
         else:
             libobjs = self.get_all_reachable_from_executables()
 
-        # Initialize data for known libraries
-        for lib in libobjs:
-            result[lib.fullname] = {}
-            for function in lib.exports:
-                result[lib.fullname][function] = []
-
-        logging.info('Resolving functions between libraries...')
         # Count references across libraries
+        logging.info('Resolving functions between libraries...')
         for lib in libobjs:
-            import_to_path = self.resolve_functions(lib)
-            for function, fullname in import_to_path.items():
-                result[fullname][function].append(lib.fullname)
+            self.resolve_functions(lib)
+
         logging.info('... done!')
 
-        return result
-
-    def propagate_call_usage(self, result=None, all_entries=False):
-        if result is None:
-            result = self.resolve_all_functions(all_entries)
-
+    def propagate_call_usage(self, all_entries=False):
         logging.info('Propagating export users through calls...')
         if all_entries:
             libobjs = self.get_library_objects()
         else:
             libobjs = self.get_all_reachable_from_executables()
+
         # Propagate usage information inside libraries
         for lib in libobjs:
             logging.debug('Propagating in %s', lib.fullname)
@@ -305,18 +288,14 @@ class LibraryStore(BaseStore):
                     for user in users:
                         # Draw internal reference
                         lib.add_export_user(trans_callee, lib.fullname)
-                        # Add connection to result
-                        if user not in result[lib.fullname][trans_callee]:
-                            result[lib.fullname][trans_callee].append(user)
                         # Add user to callee if not already present
                         if not lib.add_export_user(trans_callee, user):
                             continue
                         # Only add to worklist if not queued already
                         if trans_callee not in worklist:
                             worklist.append(trans_callee)
-        logging.info('... done!')
 
-        return result
+        logging.info('... done!')
 
     def dump(self, output_file):
         logging.debug('Saving results to \'%s\'', output_file)

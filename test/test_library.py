@@ -180,18 +180,20 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
 
         # Check if resolving functions works
-        resol = store.resolve_functions(lib)
-        self.assertEqual(len(resol), 2)
-        self.assertTrue('malloc' in resol)
+        store.resolve_functions(lib)
+        self.assertEqual(len([func for (func, path) in lib.imports.items()
+                              if path]), 2)
+        self.assertIsNotNone(lib.imports['malloc'])
         # the other one is __cxa_finalize, imported as a weak symbol from libc
 
     def test_3_resolve_imports_to_library_by_path(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
 
         # Check if resolving functions by name works
-        resol = store.resolve_functions(lib.fullname)
-        self.assertEqual(len(resol), 2)
-        self.assertTrue('malloc' in resol)
+        store.resolve_functions(lib.fullname)
+        self.assertEqual(len([func for (func, path) in lib.imports.items()
+                              if path]), 2)
+        self.assertIsNotNone(lib.imports['malloc'])
         # the other one is __cxa_finalize, imported as a weak symbol from libc
 
     def test_4_resolve_calls_by_capstone(self):
@@ -242,16 +244,16 @@ class TestLibrary(unittest.TestCase):
         not_imported = Library(os.path.abspath(TEST_EXECONLY))
         store.resolve_libs_recursive(not_imported)
 
-        resolved_functions = store.resolve_all_functions(all_entries=True)
-        result = store.propagate_call_usage(resolved_functions, all_entries=True)
+        store.resolve_all_functions(all_entries=True)
+        store.propagate_call_usage(all_entries=True)
         # Check if all transitively called functions have the binary as their user
-        self.assertIn(binary.fullname, result[lib.fullname]['external'])
-        self.assertIn(binary.fullname, result[lib.fullname]['external_caller'])
-        self.assertIn(binary.fullname, result[lib.fullname]['second_level_caller'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['external'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['external_caller'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['second_level_caller'])
         # If we use all libraries in the store as entry points for the
         # resolution, TEST_EXECONLY should show up as a user of 'external' in
         # TEST_LIBRARY
-        self.assertIn(not_imported.fullname, result[lib.fullname]['external'])
+        self.assertIn(not_imported.fullname, store[lib.fullname].exports['external'])
 
     def test_6_propagate_calls_exec_only(self):
         store, binary = create_store_and_lib(TEST_BINARY,
@@ -261,15 +263,15 @@ class TestLibrary(unittest.TestCase):
         not_imported = Library(os.path.abspath(TEST_EXECONLY))
         store.resolve_libs_recursive(not_imported)
 
-        resolved_functions = store.resolve_all_functions(all_entries=False)
-        result = store.propagate_call_usage(resolved_functions, all_entries=False)
+        store.resolve_all_functions(all_entries=False)
+        store.propagate_call_usage(all_entries=False)
         # Check if all transitively called functions have the binary as their user
-        self.assertIn(binary.fullname, result[lib.fullname]['external'])
-        self.assertIn(binary.fullname, result[lib.fullname]['external_caller'])
-        self.assertIn(binary.fullname, result[lib.fullname]['second_level_caller'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['external'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['external_caller'])
+        self.assertIn(binary.fullname, store[lib.fullname].exports['second_level_caller'])
         # In this case, the library not imported from TEST_BINARY should not
         # show up as a user of TEST_LIBRARY
-        self.assertNotIn(not_imported.fullname, result[lib.fullname]['external'])
+        self.assertNotIn(not_imported.fullname, store[lib.fullname].exports['external'])
 
 
     def test_7_store_load(self):
@@ -279,7 +281,7 @@ class TestLibrary(unittest.TestCase):
         lib = Library(os.path.abspath(TEST_LIBRARY))
 
         resolved_functions = store.resolve_all_functions(all_entries=True)
-        store.propagate_call_usage(resolved_functions, all_entries=True)
+        store.propagate_call_usage(all_entries=True)
 
         # Create a temporary file, close it (we only need the path) and dump
         fd, name = tempfile.mkstemp()
