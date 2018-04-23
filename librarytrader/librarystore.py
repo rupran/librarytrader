@@ -169,6 +169,20 @@ class LibraryStore(BaseStore):
         return list(val for (key, val) in self.items()
                     if not isinstance(val, str))
 
+    def get_executable_objects(self):
+        return list(library for library in self.get_library_objects()
+                    if os.access(library.fullname, os.X_OK))
+
+    def get_all_reachable_from_executables(self):
+        retval = set()
+        workset = set(self.get_executable_objects())
+        while workset:
+            cur = workset.pop()
+            retval.add(cur)
+            workset.update(self[child] for child in cur.needed_libs.values()
+                           if child and self[child] not in retval)
+        return list(retval)
+
     def get_transitive_calls(self, library, function, cache=None, working_on=None):
         if cache is None:
             cache = {}
@@ -244,9 +258,12 @@ class LibraryStore(BaseStore):
 
         return result
 
-    def resolve_all_functions(self):
+    def resolve_all_functions(self, all_entries=False):
         result = {}
-        libobjs = self.get_library_objects()
+        if all_entries:
+            libobjs = self.get_library_objects()
+        else:
+            libobjs = self.get_all_reachable_from_executables()
 
         # Initialize data for known libraries
         for lib in libobjs:
@@ -264,13 +281,17 @@ class LibraryStore(BaseStore):
 
         return result
 
-    def propagate_call_usage(self, result=None):
+    def propagate_call_usage(self, result=None, all_entries=False):
         if result is None:
-            result = self.resolve_all_functions()
+            result = self.resolve_all_functions(all_entries)
 
         logging.info('Propagating export users through calls...')
+        if all_entries:
+            libobjs = self.get_library_objects()
+        else:
+            libobjs = self.get_all_reachable_from_executables()
         # Propagate usage information inside libraries
-        for lib in self.get_library_objects():
+        for lib in libobjs:
             logging.debug('Propagating in %s', lib.fullname)
             # Starting points are all referenced exports
             worklist = collections.deque(function for function, users
@@ -282,16 +303,17 @@ class LibraryStore(BaseStore):
                 # Add users to transitively called functions
                 for trans_callee in self.get_transitive_calls(lib, cur):
                     for user in users:
+                        # Draw internal reference
+                        lib.add_export_user(trans_callee, lib.fullname)
+                        # Add connection to result
+                        if user not in result[lib.fullname][trans_callee]:
+                            result[lib.fullname][trans_callee].append(user)
                         # Add user to callee if not already present
                         if not lib.add_export_user(trans_callee, user):
                             continue
-                        # Draw internal reference
-                        lib.add_export_user(trans_callee, lib.fullname)
                         # Only add to worklist if not queued already
-                        if trans_callee in worklist:
-                            worklist.remove(trans_callee)
-                        worklist.append(trans_callee)
-                        result[lib.fullname][trans_callee].append(user)
+                        if trans_callee not in worklist:
+                            worklist.append(trans_callee)
         logging.info('... done!')
 
         return result

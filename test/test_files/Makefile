@@ -4,11 +4,12 @@ RPATH_DIR=rpath_dir
 RPATH_SUBDIR=$(RPATH_DIR)/rpath_subdir
 TARGETS=user libmock.so librpath_one.so $(RPATH_DIR)/librpath_two.so \
 	$(RPATH_SUBDIR)/librpath_three.so $(RPATH_SUBDIR)/librunpath.so \
-	$(RPATH_DIR)/libldd_search.so libnoldconfig.so
+	$(RPATH_DIR)/libldd_search.so libnoldconfig.so libnot_imported.so
 
 .PHONY: all clean
 
 all: $(TARGETS)
+	chmod -x $(filter %.so,$(TARGETS))
 
 user: user.c libmock.so
 	$(CC) -L. -o $@ $< -lmock
@@ -43,6 +44,9 @@ $(RPATH_DIR)/libldd_search.so: $(RPATH_DIR)/ldd_search.c libnoldconfig.so
 
 libnoldconfig.so: noldconfig.c
 	$(CC) $(CFLAGS) -o $@ $<
+
+libnot_imported.so: not_imported.c libmock.so
+	$(CC) $(CFLAGS) -o $@ $< -L. -lmock
 
 clean:
 	rm -f $(TARGETS)

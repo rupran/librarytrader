@@ -23,6 +23,7 @@ TEST_RUNPATH  = RPATH_SUB + 'librunpath.so'
 TEST_LD_PATHS = RPATH_DIR + 'libldd_search.so'
 TEST_NOLDCONF = FILE_PATH + 'libnoldconfig.so'
 TEST_LDLIBC   = LDLIB_DIR + 'libc-2.23.so'
+TEST_EXECONLY = FILE_PATH + 'libnot_imported.so'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -233,18 +234,43 @@ class TestLibrary(unittest.TestCase):
         # Check that transitive callees are returned
         self.assertSetEqual(result, set(['external_caller', 'external']))
 
-    def test_6_propagate_calls(self):
+    def test_6_propagate_calls_all_entries(self):
         store, binary = create_store_and_lib(TEST_BINARY,
                                              resolve_libs_recursive=True,
                                              call_resolve=True)
         lib = Library(os.path.abspath(TEST_LIBRARY))
+        not_imported = Library(os.path.abspath(TEST_EXECONLY))
+        store.resolve_libs_recursive(not_imported)
 
-        resolved_functions = store.resolve_all_functions()
-        result = store.propagate_call_usage(resolved_functions)
+        resolved_functions = store.resolve_all_functions(all_entries=True)
+        result = store.propagate_call_usage(resolved_functions, all_entries=True)
         # Check if all transitively called functions have the binary as their user
         self.assertIn(binary.fullname, result[lib.fullname]['external'])
         self.assertIn(binary.fullname, result[lib.fullname]['external_caller'])
         self.assertIn(binary.fullname, result[lib.fullname]['second_level_caller'])
+        # If we use all libraries in the store as entry points for the
+        # resolution, TEST_EXECONLY should show up as a user of 'external' in
+        # TEST_LIBRARY
+        self.assertIn(not_imported.fullname, result[lib.fullname]['external'])
+
+    def test_6_propagate_calls_exec_only(self):
+        store, binary = create_store_and_lib(TEST_BINARY,
+                                             resolve_libs_recursive=True,
+                                             call_resolve=True)
+        lib = Library(os.path.abspath(TEST_LIBRARY))
+        not_imported = Library(os.path.abspath(TEST_EXECONLY))
+        store.resolve_libs_recursive(not_imported)
+
+        resolved_functions = store.resolve_all_functions(all_entries=False)
+        result = store.propagate_call_usage(resolved_functions, all_entries=False)
+        # Check if all transitively called functions have the binary as their user
+        self.assertIn(binary.fullname, result[lib.fullname]['external'])
+        self.assertIn(binary.fullname, result[lib.fullname]['external_caller'])
+        self.assertIn(binary.fullname, result[lib.fullname]['second_level_caller'])
+        # In this case, the library not imported from TEST_BINARY should not
+        # show up as a user of TEST_LIBRARY
+        self.assertNotIn(not_imported.fullname, result[lib.fullname]['external'])
+
 
     def test_7_store_load(self):
         store, binary = create_store_and_lib(TEST_BINARY,
@@ -252,8 +278,8 @@ class TestLibrary(unittest.TestCase):
                                              call_resolve=True)
         lib = Library(os.path.abspath(TEST_LIBRARY))
 
-        resolved_functions = store.resolve_all_functions()
-        store.propagate_call_usage(resolved_functions)
+        resolved_functions = store.resolve_all_functions(all_entries=True)
+        store.propagate_call_usage(resolved_functions, all_entries=True)
 
         # Create a temporary file, close it (we only need the path) and dump
         fd, name = tempfile.mkstemp()

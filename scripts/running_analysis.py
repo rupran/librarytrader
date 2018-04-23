@@ -58,6 +58,9 @@ class Runner():
         parser.add_argument('-t', '--transitive-users', action='store_true',
                             help='Propagate users over interface calls ' \
                             '(implies -r)')
+        parser.add_argument('-a', '--all-entries', action='store_true',
+                            help='Use all libraries as entry points for ' \
+                            'function resolution. Default: only executables')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -115,7 +118,7 @@ class Runner():
             self.store.dump(self.args.store)
 
     def _propagate_users_through_calls(self):
-        result = self.store.propagate_call_usage(self.get_all_resolved_functions())
+        result = self.store.propagate_call_usage(self.get_all_resolved_functions(), self.args.all_entries)
         self.all_resolved_functions = result
         return result
 
@@ -149,7 +152,7 @@ class Runner():
 
     def get_all_resolved_functions(self):
         if self.all_resolved_functions is None:
-            self.all_resolved_functions = self.store.resolve_all_functions()
+            self.all_resolved_functions = self.store.resolve_all_functions(self.args.all_entries)
         return self.all_resolved_functions
 
     def resolve_and_print_one(self):
@@ -189,7 +192,10 @@ class Runner():
                 fd.write('{},{}\n'.format(key, value))
 
     def do_import_export_histograms(self):
-        libobjs = self.store.get_library_objects()
+        if self.args.all_entries:
+            libobjs = self.store.get_library_objects()
+        else:
+            libobjs = self.store.get_all_reachable_from_executables()
 
         histo_in = collections.defaultdict(int)
         histo_out = collections.defaultdict(int)
