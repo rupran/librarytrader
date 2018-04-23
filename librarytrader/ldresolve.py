@@ -18,6 +18,7 @@
 import logging
 import os
 import re
+import subprocess
 
 from librarytrader.common.datatypes import BaseStore
 
@@ -40,7 +41,11 @@ class LDResolve(BaseStore):
         if from_file:
             lines = open(from_file, 'r')
         else:
-            lines = os.popen('/sbin/ldconfig -p')
+            newenv = os.environ.copy()
+            newenv['LD_LIBRARY_PATH'] = ''
+            proc = subprocess.Popen(['/sbin/ldconfig', '-p'], env=newenv,
+                                    stdout=subprocess.PIPE)
+            lines = proc.communicate()[0].decode().split('\n')[1:-1]
 
         for line in lines:
             line = line.strip()
@@ -51,8 +56,7 @@ class LDResolve(BaseStore):
                 self._add_or_append(libname, fullpath)
 
                 basepath = os.path.join(os.sep, *fullpath.split('/')[:-1])
-                if basepath not in self.basepaths:
-                    self.basepaths.add(basepath)
+                self.basepaths.add(basepath)
             else:
                 logging.info('ill-formed line \'%s\'', line)
 
@@ -61,20 +65,25 @@ class LDResolve(BaseStore):
         else:
             logging.debug('Loaded %d entries from ldconfig', len(self))
 
-    def get_paths(self, libname, rpaths, inherited_rpaths, runpaths):
+    def get_paths(self, libname, rpaths, inherited_rpaths, runpaths,
+                  ld_library_paths):
         retval = []
         to_search = []
 
         if not runpaths:
             # Local rpaths first
             if rpaths:
-                to_search.extend(path for path in rpaths)
+                to_search.extend(rpaths)
 
             # ... then possible inherited rpaths
             if inherited_rpaths:
-                to_search.extend(path for path in inherited_rpaths)
-        else:
-            to_search.extend(path for path in runpaths)
+                to_search.extend(inherited_rpaths)
+
+        # LD_LIBRARY_PATH comes now
+        to_search.extend(ld_library_paths)
+
+        if runpaths:
+            to_search.extend(runpaths)
 
         for rpath in to_search:
             fullpath = os.path.abspath(os.path.join(rpath, libname))

@@ -72,10 +72,12 @@ class LibraryStore(BaseStore):
 
         return retval
 
-    def _find_compatible_libs(self, target, callback, inherited_rpaths=None):
+    def _find_compatible_libs(self, target, callback, inherited_rpaths=None,
+                              ld_library_paths=None):
         for needed_name in target.needed_libs:
             rpaths = self.resolver.get_paths(needed_name, target.rpaths,
-                                             inherited_rpaths, target.runpaths)
+                                             inherited_rpaths, target.runpaths,
+                                             ld_library_paths)
 
             # Try to find compatible libs from ldconfig and rpath alone
             possible_libs = self._get_compatible_libs(target, rpaths)
@@ -105,7 +107,9 @@ class LibraryStore(BaseStore):
                             next_rpaths.extend(inherited_rpaths)
                         if target.rpaths:
                             next_rpaths.extend(target.rpaths)
-                    callback(needed, inherited_rpaths=next_rpaths)
+
+                    callback(needed, inherited_rpaths=next_rpaths,
+                             ld_library_paths=ld_library_paths)
 
                     target.all_imported_libs.update(needed.all_imported_libs)
 
@@ -113,7 +117,7 @@ class LibraryStore(BaseStore):
                 break
 
     def _resolve_libs(self, library, path="", callback=None,
-                      inherited_rpaths=None):
+                      inherited_rpaths=None, ld_library_paths=None):
         if not library:
             library, link_path = self._get_or_create_library(path)
             if not library:
@@ -134,8 +138,17 @@ class LibraryStore(BaseStore):
         # Add ourselves before processing imports
         self._add_library(library.fullname, library)
 
+        # Only add LD_LIBRARY_PATH for top level calls, as $ORIGIN must be
+        # resolved to the path of the analyzed binary
+        if ld_library_paths is None:
+            ld_library_paths = []
+            if 'LD_LIBRARY_PATH' in os.environ:
+                ld_library_paths = [p.replace('$ORIGIN', os.path.dirname(library.fullname))
+                                    for p in os.environ['LD_LIBRARY_PATH'].split(':')]
+
         # Find and resolve imports
-        self._find_compatible_libs(library, callback, inherited_rpaths)
+        self._find_compatible_libs(library, callback, inherited_rpaths,
+                                   ld_library_paths)
 
     def resolve_libs_single(self, library, path=""):
         self._resolve_libs(library, path)
@@ -143,9 +156,11 @@ class LibraryStore(BaseStore):
     def resolve_libs_single_by_path(self, path):
         self.resolve_libs_single(None, path)
 
-    def resolve_libs_recursive(self, library, path="", inherited_rpaths=None):
+    def resolve_libs_recursive(self, library, path="", inherited_rpaths=None,
+                               ld_library_paths=None):
         self._resolve_libs(library, path, callback=self.resolve_libs_recursive,
-                           inherited_rpaths=inherited_rpaths)
+                           inherited_rpaths=inherited_rpaths,
+                           ld_library_paths=ld_library_paths)
 
     def resolve_libs_recursive_by_path(self, path):
         self.resolve_libs_recursive(None, path)

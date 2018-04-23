@@ -11,6 +11,7 @@ from librarytrader.interface_calls import disassemble_capstone, \
 FILE_PATH = 'test/test_files/'
 RPATH_DIR = FILE_PATH + 'rpath_dir/'
 RPATH_SUB = RPATH_DIR + 'rpath_subdir/'
+LDLIB_DIR = FILE_PATH + 'ld_library_dir/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
 TEST_LIBRARY  = FILE_PATH + 'libmock.so'
 TEST_BINARY   = FILE_PATH + 'user'
@@ -21,6 +22,7 @@ TEST_RPATH_3  = RPATH_SUB + 'librpath_three.so'
 TEST_RUNPATH  = RPATH_SUB + 'librunpath.so'
 TEST_LD_PATHS = RPATH_DIR + 'libldd_search.so'
 TEST_NOLDCONF = FILE_PATH + 'libnoldconfig.so'
+TEST_LDLIBC   = LDLIB_DIR + 'libc-2.23.so'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -151,6 +153,27 @@ class TestLibrary(unittest.TestCase):
         # Make sure we found the library
         self.assertEquals(os.path.abspath(TEST_NOLDCONF),
                           search.needed_libs['libnoldconfig.so'])
+
+    def test_2_resolution_with_ld_library_path(self):
+        # Save possibly set LD_LIBRARY_PATH
+        backup = None
+        if 'LD_LIBRARY_PATH' in os.environ:
+            backup = os.environ['LD_LIBRARY_PATH']
+
+        # Set LD_LIBRARY_PATH and resolve libraries
+        os.environ['LD_LIBRARY_PATH'] = '$ORIGIN/ld_library_dir'
+        store, lib = create_store_and_lib(resolve_libs_recursive=True)
+
+        # Possibly restore LD_LIBRARY_PATH
+        if backup:
+            os.environ['LD_LIBRARY_PATH'] = backup
+        else:
+            del os.environ['LD_LIBRARY_PATH']
+
+        # Assert we found the library in the LD_LIBRARY_PATH instead of the
+        # one from the ldconfig file.
+        self.assertEquals(os.path.abspath(TEST_LDLIBC),
+                          lib.needed_libs['libc.so.6'])
 
     def test_3_resolve_imports_to_library(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
