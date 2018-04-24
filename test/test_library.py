@@ -202,10 +202,13 @@ class TestLibrary(unittest.TestCase):
 
         calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
 
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls,
                              {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller'])})
+                              'second_level_caller': set(['external_caller']),
+                              'recursive': set(['recursive_helper', 'external']),
+                              'recursive_helper': set(['recursive', 'external']),
+                              })
 
     def test_4_resolve_calls_by_objdump(self):
         store, lib = create_store_and_lib()
@@ -213,10 +216,13 @@ class TestLibrary(unittest.TestCase):
 
         calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
 
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls,
                              {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller'])})
+                              'second_level_caller': set(['external_caller']),
+                              'recursive': set(['recursive_helper', 'external']),
+                              'recursive_helper': set(['recursive', 'external']),
+                              })
 
     def test_4_resolve_calls_integrated(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
@@ -226,7 +232,10 @@ class TestLibrary(unittest.TestCase):
         self.assertEqual(len(result), 3)
         self.assertDictEqual(dict(store[lib.fullname].calls),
                              {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller'])})
+                              'second_level_caller': set(['external_caller']),
+                              'recursive': set(['recursive_helper', 'external']),
+                              'recursive_helper': set(['recursive', 'external']),
+                              })
 
     def test_5_transitive_calls(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True,
@@ -235,6 +244,12 @@ class TestLibrary(unittest.TestCase):
         result = store.get_transitive_calls(lib, 'second_level_caller')
         # Check that transitive callees are returned
         self.assertSetEqual(result, set(['external_caller', 'external']))
+
+        # Check that functions calling themselves recursively work and cover
+        # the use of the cache (external is called from recursive and its
+        # recursive_helper function)
+        result = store.get_transitive_calls(lib, 'recursive')
+        self.assertSetEqual(result, set(['external', 'recursive_helper']))
 
     def test_6_propagate_calls_all_entries(self):
         store, binary = create_store_and_lib(TEST_BINARY,

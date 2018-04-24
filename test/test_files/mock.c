@@ -25,3 +25,18 @@ static void* internal(int n){
 void* ref_internal(){
     return internal(42);
 }
+
+int recursive(unsigned int start);
+
+int recursive_helper(unsigned int c) {
+    unsigned int local = external(c);
+    return recursive(local/2);
+}
+
+int recursive(unsigned int start){
+    if (start == 0) {
+	return external(start);
+    } else {
+	return recursive_helper(start);
+    }
+}
