@@ -1,10 +1,12 @@
 CC=gcc
-CFLAGS=-shared -fPIC -O3 -Wl,-Bsymbolic-functions
+SHARED_FLAGS=-shared -fPIC -O3
+CFLAGS=$(SHARED_FLAGS) -Wl,-Bsymbolic-functions
 RPATH_DIR=rpath_dir
 RPATH_SUBDIR=$(RPATH_DIR)/rpath_subdir
-TARGETS=user libmock.so librpath_one.so $(RPATH_DIR)/librpath_two.so \
-	$(RPATH_SUBDIR)/librpath_three.so $(RPATH_SUBDIR)/librunpath.so \
-	$(RPATH_DIR)/libldd_search.so libnoldconfig.so libnot_imported.so
+TARGETS=user libmock.so libmock_plt.so librpath_one.so \
+	$(RPATH_DIR)/librpath_two.so $(RPATH_SUBDIR)/librpath_three.so \
+	$(RPATH_SUBDIR)/librunpath.so $(RPATH_DIR)/libldd_search.so \
+	libnoldconfig.so libnot_imported.so
 
 .PHONY: all clean
 
@@ -22,6 +24,10 @@ user_pie: user.c libmock.so
 
 libmock.so: mock.c
 	$(CC) $(CFLAGS) -o $@ $^
+	strip -s $@
+
+libmock_plt.so: mock.c
+	$(CC) $(SHARED_FLAGS) -o $@ $<
 	strip -s $@
 
 librpath_one.so: rpath_one.c $(RPATH_DIR)/librpath_two.so

@@ -310,6 +310,12 @@ class LibraryStore(BaseStore):
                 lib_dict["type"] = "library"
                 lib_dict["imports"] = value.imports
                 lib_dict["exports"] = value.exports
+                lib_dict["imports_plt"] = []
+                for addr, name in value.imports_plt.items():
+                    lib_dict["imports_plt"].append([addr, name])
+                lib_dict["exports_plt"] = []
+                for addr, name in value.exports_plt.items():
+                    lib_dict["exports_plt"].append([addr, name])
                 lib_dict["needed_libs"] = []
                 # Order is relevant for needed_libs traversal, so convert
                 # dictionary to a list to preserve ordering in JSON
@@ -344,6 +350,14 @@ class LibraryStore(BaseStore):
                     library = Library(key, load_elffile=False)
                     library.imports = value["imports"]
                     library.exports = value["exports"]
+                    imports_plt_dict = collections.OrderedDict()
+                    for addr, name in value["imports_plt"]:
+                        imports_plt_dict[addr] = name
+                    library.imports_plt = imports_plt_dict
+                    exports_plt_dict = collections.OrderedDict()
+                    for addr, name in value["exports_plt"]:
+                        exports_plt_dict[addr] = name
+                    library.exports_plt = exports_plt_dict
                     # Recreate order from list
                     needed_libs = value["needed_libs"]
                     needed_libs_dict = collections.OrderedDict()

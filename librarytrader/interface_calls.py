@@ -63,7 +63,7 @@ def disassemble_objdump(library, start, length):
 
     return (disassembly, find_calls_from_objdump)
 
-def find_calls_from_objdump(disas, symbols):
+def find_calls_from_objdump(library, disas, symbols):
     local_calls = set()
 
     for _, decoded in disas:
@@ -77,6 +77,11 @@ def find_calls_from_objdump(disas, symbols):
             target = int(match.group(1), 16)
             if target in symbols:
                 local_calls.add(symbols[target])
+            elif target in library.exports_plt:
+                local_calls.add(library.exports_plt[target])
+            elif target in library.imports_plt:
+                # TODO: see comment in capstone below
+                pass
 
     return local_calls
 
@@ -106,10 +111,9 @@ def disassemble_capstone(library, start, length):
 
     return (disas, find_calls_from_capstone)
 
-def find_calls_from_capstone(disas, symbols):
+def find_calls_from_capstone(library, disas, symbols):
     local_calls = set()
-    disas_list = list(disas)
-    for instr in disas_list:
+    for instr in disas:
         if instr.group(capstone.x86_const.X86_GRP_CALL) \
                 or instr.group(capstone.x86_const.X86_GRP_JUMP):
             try:
@@ -118,6 +122,13 @@ def find_calls_from_capstone(disas, symbols):
                 continue
             if target in symbols:
                 local_calls.add(symbols[target])
+            elif target in library.exports_plt:
+                local_calls.add(library.exports_plt[target])
+            elif target in library.imports_plt:
+                # TODO: Here we could generate call graph data for used imports
+                # from other libraries, i.e. more fine grained usage data.
+                logging.debug('plt_import_call at %x to %s', instr.address,
+                              library.imports_plt[target])
 
     return local_calls
 
@@ -139,7 +150,7 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     for name, cur_range in ranges.items():
         for start, size in cur_range:
             disas, resolution_function = disas_function(library, start, size)
-            local_calls = resolution_function(disas, symbols)
+            local_calls = resolution_function(library, disas, symbols)
             if local_calls:
                 calls[name] = local_calls
 

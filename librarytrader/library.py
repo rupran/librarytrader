@@ -37,6 +37,9 @@ class Library:
         self.exports = collections.OrderedDict()
         self.imports = collections.OrderedDict()
 
+        self.exports_plt = collections.OrderedDict()
+        self.imports_plt = collections.OrderedDict()
+
         self.needed_libs = collections.OrderedDict()
         self.all_imported_libs = collections.OrderedDict()
         self.rpaths = []
@@ -105,9 +108,35 @@ class Library:
                                  self.fullname)
                     self.exports.clear()
 
+    def parse_plt(self):
+        relaplt = self._elffile.get_section_by_name('.rela.plt')
+        plt = self._elffile.get_section_by_name('.plt')
+        dynsym = self._elffile.get_section_by_name('.dynsym')
+        if relaplt and plt and dynsym:
+            base = plt['sh_offset']
+            offset = 0
+            for reloc in relaplt.iter_relocations():
+                # The first entry in .plt is special, it contains the logic for
+                # all other entries to jump into the loader. Real functions come
+                # after that.
+                offset += plt['sh_entsize']
+
+                symbol = dynsym.get_symbol(reloc['r_info_sym'])
+                if not symbol.name:
+                    continue
+
+                plt_addr = base + offset
+                if symbol['st_shndx'] == 'SHN_UNDEF':
+                    self.imports_plt[plt_addr] = symbol.name
+                else:
+                    self.exports_plt[plt_addr] = symbol.name
+        else:
+            logging.debug('missing sections for %s', self.fullname)
+
     def parse_functions(self, release=False):
         self.parse_symtab()
         self.parse_dynamic()
+        self.parse_plt()
         if release:
             self._release_elffile()
 

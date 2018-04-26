@@ -14,6 +14,7 @@ RPATH_SUB = RPATH_DIR + 'rpath_subdir/'
 LDLIB_DIR = FILE_PATH + 'ld_library_dir/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
 TEST_LIBRARY  = FILE_PATH + 'libmock.so'
+TEST_LIB_PLT  = FILE_PATH + 'libmock_plt.so'
 TEST_BINARY   = FILE_PATH + 'user'
 TEST_BIN_PIE  = FILE_PATH + 'user_pie'
 TEST_RPATH    = FILE_PATH + 'librpath_one.so'
@@ -196,6 +197,12 @@ class TestLibrary(unittest.TestCase):
         self.assertIsNotNone(lib.imports['malloc'])
         # the other one is __cxa_finalize, imported as a weak symbol from libc
 
+    call_result = {'external_caller': set(['external']),
+                   'second_level_caller': set(['external_caller']),
+                   'recursive': set(['recursive_helper', 'external']),
+                   'recursive_helper': set(['recursive', 'external'])
+                   }
+
     def test_4_resolve_calls_by_capstone(self):
         store, lib = create_store_and_lib()
         lib.parse_functions()
@@ -203,12 +210,7 @@ class TestLibrary(unittest.TestCase):
         calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
 
         self.assertEqual(len(calls), 4)
-        self.assertDictEqual(calls,
-                             {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller']),
-                              'recursive': set(['recursive_helper', 'external']),
-                              'recursive_helper': set(['recursive', 'external']),
-                              })
+        self.assertDictEqual(calls, self.call_result)
 
     def test_4_resolve_calls_by_objdump(self):
         store, lib = create_store_and_lib()
@@ -217,12 +219,27 @@ class TestLibrary(unittest.TestCase):
         calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
 
         self.assertEqual(len(calls), 4)
-        self.assertDictEqual(calls,
-                             {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller']),
-                              'recursive': set(['recursive_helper', 'external']),
-                              'recursive_helper': set(['recursive', 'external']),
-                              })
+        self.assertDictEqual(calls, self.call_result)
+
+    def test_4_resolve_calls_by_capstone_plt(self):
+        store, lib = create_store_and_lib(TEST_LIB_PLT)
+        lib.parse_functions()
+
+        calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
+
+        # The results should match the variant with symbolic functions
+        self.assertEquals(len(calls), 4)
+        self.assertDictEqual(calls, self.call_result)
+
+    def test_4_resolve_calls_by_objdump_plt(self):
+        store, lib = create_store_and_lib(TEST_LIB_PLT)
+        lib.parse_functions()
+
+        calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
+
+        # The results should match the variant with symbolic functions
+        self.assertEquals(len(calls), 4)
+        self.assertDictEqual(calls, self.call_result)
 
     def test_4_resolve_calls_integrated(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
@@ -230,12 +247,7 @@ class TestLibrary(unittest.TestCase):
         result = resolve_calls(store)
         # calls for mock.so, libc-2.23.so and ld-2.23.so
         self.assertEqual(len(result), 3)
-        self.assertDictEqual(dict(store[lib.fullname].calls),
-                             {'external_caller': set(['external']),
-                              'second_level_caller': set(['external_caller']),
-                              'recursive': set(['recursive_helper', 'external']),
-                              'recursive_helper': set(['recursive', 'external']),
-                              })
+        self.assertDictEqual(dict(store[lib.fullname].calls), self.call_result)
 
     def test_5_transitive_calls(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True,
