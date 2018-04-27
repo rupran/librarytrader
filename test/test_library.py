@@ -17,6 +17,8 @@ TEST_LIBRARY  = FILE_PATH + 'libmock.so'
 TEST_LIB_PLT  = FILE_PATH + 'libmock_plt.so'
 TEST_BINARY   = FILE_PATH + 'user'
 TEST_BIN_PIE  = FILE_PATH + 'user_pie'
+TEST_LIBC     = FILE_PATH + 'libc-2.23.so'
+TEST_LIBC_LNK = FILE_PATH + 'libc.so.6'
 TEST_RPATH    = FILE_PATH + 'librpath_one.so'
 TEST_RPATH_2  = RPATH_DIR + 'librpath_two.so'
 TEST_RPATH_3  = RPATH_SUB + 'librpath_three.so'
@@ -53,6 +55,12 @@ class TestLibrary(unittest.TestCase):
         user_pie.parse_dynamic()
         self.assertEquals(len(user_pie.exports.keys()), 0)
 
+    def test_0_fail_on_elferror(self):
+        store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
+        # Makefile isn't an ELF file, so we fail in store._get_or_create_library
+        store.resolve_libs_single_by_path(os.path.abspath(FILE_PATH + 'Makefile'))
+        self.assertEquals(len(store.items()), 0)
+
     def test_0_resolve_libs_single(self):
         store, lib = create_store_and_lib()
 
@@ -83,6 +91,16 @@ class TestLibrary(unittest.TestCase):
 
         # No recursion, only parameters are in store
         self.assertEqual(len(store), 1)
+
+    def test_0_resolve_libs_with_symlinks(self):
+        store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
+
+        store.resolve_libs_single_by_path(os.path.abspath(TEST_LIBC_LNK))
+
+        # libc.so.6 -> libc-2.23.so and libc-2.23.so
+        self.assertEquals(len(store.items()), 2)
+        self.assertEquals(store.get_from_path(os.path.abspath(TEST_LIBC_LNK)),
+                          store[os.path.abspath(TEST_LIBC)])
 
     def test_1_resolve_libs_recursive(self):
         store, lib = create_store_and_lib()
