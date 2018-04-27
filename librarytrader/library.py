@@ -152,6 +152,10 @@ class Library:
             hdr['e_machine'] == o_hdr['e_machine']
 
     def add_export_user(self, name, user_path):
+        if name not in self.exports:
+            logging.error('%s not found in %s (user would be %s)', name,
+                          self.fullname, user_path)
+            return
         if self.exports[name] is None:
             self.exports[name] = []
         if user_path not in self.exports[name]:
