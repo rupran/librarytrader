@@ -32,7 +32,7 @@ libmock_plt.so: mock.c
 
 librpath_one.so: rpath_one.c $(RPATH_DIR)/librpath_two.so
 	$(CC) $(CFLAGS) -Wl,-rpath='$$ORIGIN/$(RPATH_DIR):$$ORIGIN/$(RPATH_SUBDIR)' \
-		-o $@ $< -L$(RPATH_DIR) -lrpath_two
+		-Wl,--disable-new-dtags -o $@ $< -L$(RPATH_DIR) -lrpath_two
 
 $(RPATH_DIR)/librpath_two.so: $(RPATH_DIR)/rpath_two.c $(RPATH_SUBDIR)/librpath_three.so
 	$(CC) $(CFLAGS) -o $@ $< -L$(RPATH_SUBDIR) -lrpath_three
