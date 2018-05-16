@@ -30,6 +30,7 @@ class LibraryStore(BaseStore):
 
     def __init__(self, ldconfig_file=None):
         super(LibraryStore, self).__init__()
+        self._entrylist = []
         self.resolver = LDResolve(ldconfig_file)
 
     def _get_or_create_library(self, path):
@@ -165,9 +166,14 @@ class LibraryStore(BaseStore):
     def resolve_libs_recursive_by_path(self, path):
         self.resolve_libs_recursive(None, path)
 
+    def set_additional_entry_points(self, entrylist):
+        self._entrylist.extend(entrylist)
+
     def get_library_objects(self):
-        return list(val for (key, val) in self.items()
-                    if not isinstance(val, str))
+        retval = list(val for (key, val) in self.items()
+                      if not isinstance(val, str))
+        retval.extend(self.get_from_path(path) for path in self._entrylist)
+        return retval
 
     def get_executable_objects(self):
         return list(library for library in self.get_library_objects()
@@ -176,12 +182,19 @@ class LibraryStore(BaseStore):
     def get_all_reachable_from_executables(self):
         retval = set()
         workset = set(self.get_executable_objects())
+        workset.update(self.get_from_path(path) for path in self._entrylist)
         while workset:
             cur = workset.pop()
             retval.add(cur)
             workset.update(self[child] for child in cur.needed_libs.values()
                            if child and self[child] not in retval)
         return list(retval)
+
+    def get_entry_points(self, all_entries=False):
+        if all_entries:
+            return self.get_library_objects()
+        else:
+            return self.get_all_reachable_from_executables()
 
     def get_transitive_calls(self, library, function, cache=None, working_on=None):
         if cache is None:
@@ -254,10 +267,7 @@ class LibraryStore(BaseStore):
                                 function, library.fullname)
 
     def resolve_all_functions(self, all_entries=False):
-        if all_entries:
-            libobjs = self.get_library_objects()
-        else:
-            libobjs = self.get_all_reachable_from_executables()
+        libobjs = self.get_entry_points(all_entries)
 
         # Count references across libraries
         logging.info('Resolving functions between libraries...')
@@ -268,10 +278,7 @@ class LibraryStore(BaseStore):
 
     def propagate_call_usage(self, all_entries=False):
         logging.info('Propagating export users through calls...')
-        if all_entries:
-            libobjs = self.get_library_objects()
-        else:
-            libobjs = self.get_all_reachable_from_executables()
+        libobjs = self.get_entry_points(all_entries)
 
         # Propagate usage information inside libraries
         for lib in libobjs:

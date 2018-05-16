@@ -36,6 +36,14 @@ class Runner():
         self._parse_arguments()
         self.store = LibraryStore()
         self.paths = self._get_paths()
+
+        if self.args.entry_list:
+            entry_points = []
+            with open(self.args.entry_list, 'r') as fdesc:
+                entry_points.extend(line.strip() for line in fdesc)
+            self.store.set_additional_entry_points(entry_points)
+            self.paths.extend(entry_points)
+
         self.all_resolved_functions = None
 
     def _parse_arguments(self):
@@ -61,6 +69,9 @@ class Runner():
         parser.add_argument('-a', '--all-entries', action='store_true',
                             help='Use all libraries as entry points for ' \
                             'function resolution. Default: only executables')
+        parser.add_argument('-e', '--entry-list', action='store',
+                            help='Use paths inside the given file as entry ' \
+                            'points regardless of its executable status')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -119,10 +130,7 @@ class Runner():
 
     def _create_export_user_mapping(self):
         result = {}
-        if self.args.all_entries:
-            libobjs = self.store.get_library_objects()
-        else:
-            libobjs = self.store.get_all_reachable_from_executables()
+        libobjs = self.store.get_entry_points(self.args.all_entries)
 
         for lib in libobjs:
             result[lib.fullname] = {}
@@ -204,10 +212,7 @@ class Runner():
                 fd.write('{},{}\n'.format(key, value))
 
     def do_import_export_histograms(self):
-        if self.args.all_entries:
-            libobjs = self.store.get_library_objects()
-        else:
-            libobjs = self.store.get_all_reachable_from_executables()
+        libobjs = self.store.get_entry_points(self.args.all_entries)
 
         histo_in = collections.defaultdict(int)
         histo_out = collections.defaultdict(int)
