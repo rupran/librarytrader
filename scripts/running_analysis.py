@@ -44,6 +44,14 @@ class Runner():
             self.store.set_additional_entry_points(entry_points)
             self.paths.extend(entry_points)
 
+        if self.args.used_functions:
+            entry_libs = []
+            with open(self.args.used_functions, 'r') as fdesc:
+                entry_libs.extend(line.strip().split(':')[0] for line in fdesc)
+            entry_libs = list(sorted(set(entry_libs)))
+            self.store.set_additional_entry_points(entry_libs)
+            self.paths.extend(entry_libs)
+
         self.all_resolved_functions = None
 
     def _parse_arguments(self):
@@ -72,6 +80,9 @@ class Runner():
         parser.add_argument('-e', '--entry-list', action='store',
                             help='Use paths inside the given file as entry ' \
                             'points regardless of its executable status')
+        parser.add_argument('-u', '--used-functions', action='store',
+                            help='A file with path:name tuples which are ' \
+                            'referenced symbols from dlsym')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
         self.args = parser.parse_args()
@@ -122,6 +133,9 @@ class Runner():
         if self.args.resolve_functions:
             self.get_all_resolved_functions()
 
+        if self.args.used_functions:
+            self._mark_extra_functions_as_used()
+
         if self.args.transitive_users:
             self._propagate_users_through_calls()
 
@@ -147,6 +161,13 @@ class Runner():
             self.store.resolve_all_functions(self.args.all_entries)
             self.all_resolved_functions = self._create_export_user_mapping()
         return self.all_resolved_functions
+
+    def _mark_extra_functions_as_used(self):
+        with open(self.args.used_functions, 'r') as infd:
+            for line in infd:
+                library, function = line.strip().split(':')
+                self.store.get_from_path(library).add_export_user(function,
+                                                                  'EXTERNAL')
 
     def _propagate_users_through_calls(self):
         self.get_all_resolved_functions()
