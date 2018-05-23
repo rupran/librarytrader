@@ -218,9 +218,9 @@ class LibraryStore(BaseStore):
 
         working_on.add(function)
         for callee in library.calls[function]:
+            local_cache.add(callee)
             if callee in working_on:
                 continue
-            local_cache.add(callee)
             subcalls = self.get_transitive_calls(library, callee, cache,
                                                  working_on)
             local_cache.update(subcalls)

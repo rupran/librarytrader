@@ -279,7 +279,7 @@ class TestLibrary(unittest.TestCase):
         # the use of the cache (external is called from recursive and its
         # recursive_helper function)
         result = store.get_transitive_calls(lib, 'recursive')
-        self.assertSetEqual(result, set(['external', 'recursive_helper']))
+        self.assertSetEqual(result, set(['external', 'recursive_helper', 'recursive']))
 
     def test_6_propagate_calls_all_entries(self):
         store, binary = create_store_and_lib(TEST_BINARY,
