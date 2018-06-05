@@ -93,7 +93,11 @@ class Runner():
         if self.args.debug:
             loglevel = logging.DEBUG
 
-        logging.basicConfig(level=loglevel)
+        logging.basicConfig(format='%(asctime)s %(levelname)-7s %(message)s',
+                            level=loglevel)
+
+        if not self.args.store:
+            self.args.store = ""
 
         if not self.args.load and not self.args.paths:
             logging.error('Please load results and/or provide paths to analyze')
@@ -117,7 +121,10 @@ class Runner():
             self.store.load(self.args.load)
 
         logging.info('Processing %d paths in total', len(self.paths))
-
+#        print([x.fullname for x in self.store.get_executable_objects() if '.so' in x.fullname])
+#        print(len(self.store.get_all_reachable_from_executables()))
+#        print([x.fullname for x in self.store.get_library_objects() if 'libgcj.so.16' in x.needed_libs])
+#        print(len([x for (x, y) in self.store['/lib/x86_64-linux-gnu/libc-2.23.so'].exports.items() if y and len(y) > 0]))
         for path in self.paths:
             logging.info('Processing %s', path)
             if self.args.single:
@@ -192,9 +199,9 @@ class Runner():
         for lib in libobjs:
             histo[len(list(lib.needed_libs.keys()))] += 1
 
-        with open('needed_histo.csv', 'w') as fd:
+        with open('{}_needed_histo.csv'.format(self.args.store), 'w') as outfd:
             for num, count in sorted(histo.items()):
-                fd.write('{},{}\n'.format(num, count))
+                outfd.write('{},{}\n'.format(num, count))
 
     def resolve_and_print_one(self):
         # Demonstration for resolving
@@ -208,7 +215,7 @@ class Runner():
 
     def count_and_print_resolved(self, do_print=True):
         collection = self.get_all_resolved_functions()
-        histo_percent = collections.defaultdict(int)
+        histo_percent = collections.defaultdict(list)
         if do_print:
             print('= Count of all external function uses:')
         # Print sorted overview
@@ -223,14 +230,17 @@ class Runner():
             if len(self.store[lib].exports) > 0 and ".so" in lib:
                 pctg = len(list(x for (x, y) in functions.items() if len(y) > 0)) \
                        / len(self.store[lib].exports)
-                pctg = int(pctg * 100)
-                if 'x32/libc-2.23.so' in lib and do_print:
-                    print(pctg, lib)
-                histo_percent[pctg] += 1
+                ipctg = int(pctg * 100)
+                if 'libc-2.23' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
+                    print(ipctg, pctg, len(list(x for (x, y) in functions.items() if len(y) > 0)), lib)
+#                if pctg == 0:
+#                    print('0 percent: {}'.format(lib))
+                histo_percent[ipctg].append(lib)
 
-        with open('import_use_histo.csv', 'w') as fd:
-            for key, value in sorted(histo_percent.items()):
-                fd.write('{},{}\n'.format(key, value))
+        with open('{}_import_use_histo.csv'.format(self.args.store), 'w') as outfd:
+#            for key, value in sorted(histo_percent.items()):
+            for key in range(101):
+                outfd.write('{},{},{}\n'.format(key, len(histo_percent[key]), histo_percent[key]))
 
     def do_import_export_histograms(self):
         libobjs = self.store.get_entry_points(self.args.all_entries)
@@ -238,22 +248,66 @@ class Runner():
         histo_in = collections.defaultdict(int)
         histo_out = collections.defaultdict(int)
         for lib in libobjs:
-            num_imports = len(list(lib.imports))
-            num_exports = len(list(lib.exports))
+            num_imports = len(list(lib.imports.keys()))
+            num_exports = len(list(lib.exports.keys()))
             histo_in[num_imports] += 1
             histo_out[num_exports] += 1
-            if num_exports > 20000:
-                print('Exporter {}: {}'.format(lib.fullname, num_exports))
-            if num_imports > 3000:
-                print('Importer {}: {}'.format(lib.fullname, num_imports))
+#            if num_exports > 20000:
+#                print('Exporter {}: {}'.format(lib.fullname, num_exports))
+#            if num_imports > 3000:
+#                print('Importer {}: {}'.format(lib.fullname, num_imports))
 
-        with open('imports_histo.csv', 'w') as fd:
+        print('Most called functions (directly and transitively):')
+        res = []
+        for library in libobjs:
+            for function, callers in library.exports.items():
+                count = 0
+                if callers is not None:
+                    count = len(set(callers))
+                res.append(('{}:{}'.format(library.fullname, function), count))
+
+        sorted_callees = list(sorted(res, key=lambda x: x[1], reverse=True))
+        for name, count in sorted_callees[:10]:
+            print('{}\t{}'.format(name, count))
+
+        with open('{}_called_functions.csv'.format(self.args.store), 'w') as outfd:
+            for name, count in sorted_callees:
+                outfd.write('{},{}\n'.format(name, count))
+
+        print('Top 10 NEEDED')
+        sorted_needed = list(sorted(libobjs, key=lambda x: len(list(x.needed_libs)), reverse=True))
+        for library in sorted_needed[:10]:
+            print('{}: {}'.format(library.fullname, len(list(library.needed_libs))))
+
+        with open('{}_needed_libraries.csv'.format(self.args.store), 'w') as outfd:
+            for library in sorted_needed:
+                outfd.write('{},{}\n'.format(library.fullname, len(list(library.needed_libs))))
+
+        print('Top 10 importers:')
+        top_importers = list(sorted(libobjs, key=lambda x: len(list(x.imports)), reverse=True))
+        for library in top_importers[:10]:
+            print('{}: {}'.format(library.fullname, len(list(library.imports))))
+
+        with open('{}_number_of_imports.csv'.format(self.args.store), 'w') as outfd:
+            for library in top_importers:
+                outfd.write('{},{}\n'.format(library.fullname, len(list(library.imports))))
+
+        with open('{}_imports_histo.csv'.format(self.args.store), 'w') as outfd:
             for key, value in sorted(histo_in.items()):
-                fd.write('{},{}\n'.format(key, value))
+                outfd.write('{},{}\n'.format(key, value))
 
-        with open('exports_histo.csv', 'w') as fd:
+        print('Top 10 exporters:')
+        top_exporters = list(sorted(libobjs, key=lambda x: len(list(x.exports)), reverse=True))
+        for library in top_exporters[:10]:
+            print('{}: {}'.format(library.fullname, len(list(library.exports))))
+
+        with open('{}_number_of_exports.csv'.format(self.args.store), 'w') as outfd:
+            for library in top_exporters:
+                outfd.write('{},{}\n'.format(library.fullname, len(list(library.exports))))
+
+        with open('{}_exports_histo.csv'.format(self.args.store), 'w') as outfd:
             for key, value in sorted(histo_out.items()):
-                fd.write('{},{}\n'.format(key, value))
+                outfd.write('{},{}\n'.format(key, value))
 
     def print_store_keys(self):
         for key, _ in sorted(self.store.items()):
@@ -268,5 +322,5 @@ if __name__ == '__main__':
 #    if not runner.args.single:
 #        runner.resolve_and_print_one()
 
-#    runner.count_and_print_resolved(do_print=False)
+    runner.count_and_print_resolved(do_print=False)
     runner.do_import_export_histograms()
