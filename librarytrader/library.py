@@ -33,8 +33,11 @@ class Library:
             self.fd = open(filename, 'rb')
             self._elffile = ELFFile(self.fd)
             self.elfheader = self._elffile.header
+            text = self._elffile.get_section_by_name('.text')
+            self.load_offset = text['sh_addr'] - text['sh_offset']
 
         self.exports = collections.OrderedDict()
+        self.function_addrs = set()
         self.imports = collections.OrderedDict()
 
         self.exports_plt = collections.OrderedDict()
@@ -51,16 +54,15 @@ class Library:
         if parse:
             self.parse_functions()
 
-    def parse_symtab(self):
+    def _get_symbol_offset(self, symbol):
+        return symbol['st_value'] - self.load_offset
+
+    def _get_function_symbols(self, section):
+        retval = []
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
-        section = self._elffile.get_section_by_name('.dynsym')
-        if not section:
-            return
 
         for _, symbol in enumerate(section.iter_symbols()):
-            shndx = symbol['st_shndx']
             symbol_type = symbol['st_info']['type']
-            symbol_bind = symbol['st_info']['bind']
 
             if symbol_type == 'STT_FUNC':
                 pass
@@ -75,13 +77,24 @@ class Library:
             else:
                 continue
 
-            if symbol_bind == 'STB_LOCAL':
-                continue
+            retval.append(symbol)
 
+        return retval
+
+    def parse_dynsym(self):
+        section = self._elffile.get_section_by_name('.dynsym')
+        if not section:
+            return
+
+        for symbol in self._get_function_symbols(section):
+            shndx = symbol['st_shndx']
+            symbol_bind = symbol['st_info']['bind']
             if shndx == 'SHN_UNDEF':
                 self.imports[symbol.name] = None
-            elif self.elfheader['e_type'] != 'ET_EXEC':
-                self.exports[symbol.name] = None
+            else:
+                self.function_addrs.add(self._get_symbol_offset(symbol))
+                if symbol_bind != 'STB_LOCAL':
+                    self.exports[symbol.name] = None
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -104,9 +117,8 @@ class Library:
             elif tag.entry.d_tag == 'DT_FLAGS_1':
                 # PIE
                 if tag.entry.d_val & 0x8000000:
-                    logging.info('\'%s\' is PIE, dropping exports...',
-                                 self.fullname)
-                    self.exports.clear()
+                    logging.info('\'%s\' is PIE', self.fullname)
+                    self.function_addrs.add(self.elfheader['e_entry'])
 
     def parse_plt(self):
         relaplt = self._elffile.get_section_by_name('.rela.plt')
@@ -134,9 +146,10 @@ class Library:
             logging.debug('missing sections for %s', self.fullname)
 
     def parse_functions(self, release=False):
-        self.parse_symtab()
+        self.parse_dynsym()
         self.parse_dynamic()
         self.parse_plt()
+        self.gather_hookable_addresses_from_symtab()
         if release:
             self._release_elffile()
 
@@ -165,21 +178,36 @@ class Library:
 
     def get_function_ranges(self):
         ranges = collections.defaultdict(list)
-        dynsym = self._elffile.get_section_by_name('.dynsym')
-        if not dynsym:
+        section = self._elffile.get_section_by_name('.dynsym')
+        if not section:
             return ranges
+
         for name in self.exports:
             # Could me more than one => symbol versioning. One probably has the
             # high bit set in .gnu.version at the corresponding offset
             # TODO: check that!
             # For now, evaluate them all
-            syms = dynsym.get_symbol_by_name(name)
+            syms = section.get_symbol_by_name(name)
             for sym in syms:
-                start = sym.entry['st_value']
+                start = self._get_symbol_offset(sym)
                 size = sym.entry['st_size']
                 ranges[name].append((start, size))
 
         return ranges
+
+    def gather_hookable_addresses_from_symtab(self):
+        if self.elfheader['e_type'] == 'ET_EXEC':
+            self.function_addrs.add(self.elfheader['e_entry'] - \
+                                    self.load_offset)
+
+        symtab = self._elffile.get_section_by_name('.symtab')
+        if not symtab:
+            return
+
+        for symbol in self._get_function_symbols(symtab):
+            shndx = symbol['st_shndx']
+            if shndx != 'SHN_UNDEF':
+                self.function_addrs.add(self._get_symbol_offset(symbol))
 
     def summary(self):
         return '{}: {} imports, {} exports, {} needed libs, ' \

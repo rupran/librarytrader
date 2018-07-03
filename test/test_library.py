@@ -45,16 +45,6 @@ class TestLibrary(unittest.TestCase):
         # relative paths fail
         self.assertRaises(ValueError, Library, TEST_LIBRARY)
 
-    def test_0_drop_pie_exports(self):
-        user_pie = Library(os.path.abspath(TEST_BIN_PIE))
-        # Parsing .symtab should identify exports
-        user_pie.parse_symtab()
-        self.assertNotEqual(len(user_pie.exports.keys()), 0)
-
-        # After parsing .dynamic the exports should be dropped
-        user_pie.parse_dynamic()
-        self.assertEquals(len(user_pie.exports.keys()), 0)
-
     def test_0_fail_on_elferror(self):
         store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
         # Makefile isn't an ELF file, so we fail in store._get_or_create_library

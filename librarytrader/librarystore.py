@@ -19,6 +19,7 @@ import collections
 import json
 import logging
 import os
+import re
 
 from elftools.common.exceptions import ELFError
 
@@ -317,6 +318,7 @@ class LibraryStore(BaseStore):
                 lib_dict["type"] = "library"
                 lib_dict["imports"] = value.imports
                 lib_dict["exports"] = value.exports
+                lib_dict["function_addrs"] = list(value.function_addrs)
                 lib_dict["imports_plt"] = []
                 for addr, name in value.imports_plt.items():
                     lib_dict["imports_plt"].append([addr, name])
@@ -357,6 +359,7 @@ class LibraryStore(BaseStore):
                     library = Library(key, load_elffile=False)
                     library.imports = value["imports"]
                     library.exports = value["exports"]
+                    library.function_addrs = set(value["function_addrs"])
                     imports_plt_dict = collections.OrderedDict()
                     for addr, name in value["imports_plt"]:
                         imports_plt_dict[addr] = name
@@ -383,3 +386,16 @@ class LibraryStore(BaseStore):
                     self._add_library(key, library)
 
         logging.debug('... done with %s entries', len(self))
+
+    def generate_uprobe_strings(self, output_name):
+        logging.info('Generating uprobe strings to %s...', output_name)
+        with open(output_name, 'w') as outfd:
+            for lib in self.get_library_objects():
+                for address in lib.function_addrs:
+                    hex_address = hex(address)
+                    event_name = re.sub(r'[-./\+]', '_', lib.fullname[1:]) \
+                        + '_' + str(hex_address)
+                    outfd.write('p:{} {}:{}\n'.format(event_name,
+                                                      lib.fullname,
+                                                      hex_address))
+        logging.info('... done!')

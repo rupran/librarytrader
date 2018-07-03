@@ -44,6 +44,9 @@ def disassemble_objdump(library, start, length):
     if length == 0:
         return (disassembly, find_calls_from_objdump)
 
+    # objdump requires addresses, not offsets
+    start += library.load_offset
+
     cmdline = ['objdump', '-d', '--no-show-raw-insn',
                '--start-address={}'.format(hex(start)),
                '--stop-address={}'.format(hex(start + length)),
@@ -74,7 +77,9 @@ def find_calls_from_objdump(library, disas, symbols):
             match = JNE_REGEX.match(decoded)
 
         if match:
-            target = int(match.group(1), 16)
+            # Symbols are offsets into the file, so we need to subtract the
+            # load_offset from the call target again to properly match it
+            target = int(match.group(1), 16) - library.load_offset
             if target in symbols:
                 local_calls.add(symbols[target])
             elif target in library.exports_plt:

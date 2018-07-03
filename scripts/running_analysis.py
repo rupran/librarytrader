@@ -85,6 +85,8 @@ class Runner():
                             'referenced symbols from dlsym')
         parser.add_argument('--single', action='store_true',
                             help='Do not recursively resolve libraries')
+        parser.add_argument('--uprobe-strings', action='store_true',
+                            help='Generate uprobe strings into a file')
         self.args = parser.parse_args()
 
         loglevel = logging.WARNING
@@ -148,6 +150,9 @@ class Runner():
 
         if self.args.store:
             self.store.dump(self.args.store)
+
+        if self.args.uprobe_strings:
+            self.store.generate_uprobe_strings('{}_uprobe_strings'.format(self.args.store))
 
     def _create_export_user_mapping(self):
         result = {}
