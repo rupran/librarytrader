@@ -395,7 +395,7 @@ class LibraryStore(BaseStore):
                     hex_address = hex(address)
                     event_name = re.sub(r'[-./\+]', '_', lib.fullname[1:]) \
                         + '_' + str(hex_address)
-                    outfd.write('p:{} {}:{}\n'.format(event_name,
+                    outfd.write('u:{} {}:{}\n'.format(event_name,
                                                       lib.fullname,
                                                       hex_address))
         logging.info('... done!')

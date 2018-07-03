@@ -1,0 +1,57 @@
+From 749eb94055e7f83d2401fd87b56f799ce194d5f9 Mon Sep 17 00:00:00 2001
+From: Andreas Ziegler <andreas.ziegler@fau.de>
+Date: Mon, 2 Jul 2018 08:45:12 +0000
+Subject: [PATCH 1/2] uprobes: allow more events, make disable_event trigger a
+ POST_TRIGGER
+
+The Ubuntu 18.04 LAMP server has around 160k events which we want
+to hook. As the number of events is limited by the size of the type
+field - which was an unsigned short - we need to change that to
+allow more events. Additionally, change the calculation of
+TRACE_MAX_EVENTS as we would shift by 32 bits otherwise, leading
+to undefined behaviour.
+
+Furthermore, in order to have a log entry after the trigger has
+been hit and disabled itself, change the type of disable_event
+to be a POST_TRIGGER event.
+---
+ include/linux/trace_events.h        | 4 ++--
+ kernel/trace/trace_events_trigger.c | 1 +
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/trace_events.h b/include/linux/trace_events.h
+index af44e7c2d577..783654357336 100644
+--- a/include/linux/trace_events.h
++++ b/include/linux/trace_events.h
+@@ -58,14 +58,14 @@ int trace_raw_output_prep(struct trace_iterator *iter,
+  *     bash-15816 [01]   235.197585: idle_cpu <- irq_enter
+  */
+ struct trace_entry {
+-	unsigned short		type;
++	unsigned int		type;
+ 	unsigned char		flags;
+ 	unsigned char		preempt_count;
+ 	int			pid;
+ };
+ 
+ #define TRACE_EVENT_TYPE_MAX						\
+-	((1 << (sizeof(((struct trace_entry *)0)->type) * 8)) - 1)
++	((1 << ((sizeof(((struct trace_entry *)0)->type) - 1) * 8)) - 1)
+ 
+ /*
+  * Trace iterator - used by printout routines who present trace
+diff --git a/kernel/trace/trace_events_trigger.c b/kernel/trace/trace_events_trigger.c
+index 87411482a46f..147695c33000 100644
+--- a/kernel/trace/trace_events_trigger.c
++++ b/kernel/trace/trace_events_trigger.c
+@@ -1562,6 +1562,7 @@ static struct event_command trigger_enable_cmd = {
+ static struct event_command trigger_disable_cmd = {
+ 	.name			= DISABLE_EVENT_STR,
+ 	.trigger_type		= ETT_EVENT_ENABLE,
++	.flags			= EVENT_CMD_FL_POST_TRIGGER,
+ 	.func			= event_enable_trigger_func,
+ 	.reg			= event_enable_register_trigger,
+ 	.unreg			= event_enable_unregister_trigger,
+-- 
+2.17.1
+

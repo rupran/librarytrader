@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect and disable triggered uprobes
+Documentation=http://localhost/
+DefaultDependencies=no
+RequiresMountsFor=/sys/kernel/debug/tracing /
+Wants=enable-uprobes.service
+After=enable-uprobes.service
+
+[Service]
+ExecStart=/usr/bin/collect_uprobes.py /etc/librarytrader/collected_uprobes
+
+[Install]
+WantedBy=sysinit.target

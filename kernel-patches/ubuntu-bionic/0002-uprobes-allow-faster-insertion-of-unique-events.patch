@@ -1,0 +1,92 @@
+From 65b0ec70f5b24bb23b65b15fd937674767a938e3 Mon Sep 17 00:00:00 2001
+From: Andreas Ziegler <andreas.ziegler@fau.de>
+Date: Mon, 2 Jul 2018 08:47:46 +0000
+Subject: [PATCH 2/2] uprobes: allow faster insertion of unique events
+
+The current code checks for the presence of events with the same
+name by iterating through the list of all present events. This
+leads to an O(n^2) behaviour which gets quite ugly for 160k events.
+
+With our generation of uprobes we know that our names are unique -
+they consist of the full path and address - so we can skip that
+check.
+---
+ kernel/trace/trace_uprobe.c | 27 ++++++++++++++++-----------
+ 1 file changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/kernel/trace/trace_uprobe.c b/kernel/trace/trace_uprobe.c
+index 268029ae1be6..37439cee8c96 100644
+--- a/kernel/trace/trace_uprobe.c
++++ b/kernel/trace/trace_uprobe.c
+@@ -321,7 +321,7 @@ static int unregister_trace_uprobe(struct trace_uprobe *tu)
+ }
+ 
+ /* Register a trace_uprobe and probe_event */
+-static int register_trace_uprobe(struct trace_uprobe *tu)
++static int register_trace_uprobe(struct trace_uprobe *tu, bool is_unique)
+ {
+ 	struct trace_uprobe *old_tu;
+ 	int ret;
+@@ -329,13 +329,15 @@ static int register_trace_uprobe(struct trace_uprobe *tu)
+ 	mutex_lock(&uprobe_lock);
+ 
+ 	/* register as an event */
+-	old_tu = find_probe_event(trace_event_name(&tu->tp.call),
+-			tu->tp.call.class->system);
+-	if (old_tu) {
+-		/* delete old event */
+-		ret = unregister_trace_uprobe(old_tu);
+-		if (ret)
+-			goto end;
++	if (!is_unique) {
++		old_tu = find_probe_event(trace_event_name(&tu->tp.call),
++				tu->tp.call.class->system);
++		if (old_tu) {
++			/* delete old event */
++			ret = unregister_trace_uprobe(old_tu);
++			if (ret)
++				goto end;
++		}
+ 	}
+ 
+ 	ret = register_uprobe_event(tu);
+@@ -366,13 +368,14 @@ static int create_trace_uprobe(int argc, char **argv)
+ 	char buf[MAX_EVENT_NAME_LEN];
+ 	struct path path;
+ 	unsigned long offset;
+-	bool is_delete, is_return;
++	bool is_delete, is_return, is_unique;
+ 	int i, ret;
+ 
+ 	inode = NULL;
+ 	ret = 0;
+ 	is_delete = false;
+ 	is_return = false;
++	is_unique = false;
+ 	event = NULL;
+ 	group = NULL;
+ 
+@@ -381,8 +384,10 @@ static int create_trace_uprobe(int argc, char **argv)
+ 		is_delete = true;
+ 	else if (argv[0][0] == 'r')
+ 		is_return = true;
++	else if (argv[0][0] == 'u')
++		is_unique = true;
+ 	else if (argv[0][0] != 'p') {
+-		pr_info("Probe definition must be started with 'p', 'r' or '-'.\n");
++		pr_info("Probe definition must be started with 'p', 'r', 'u' or '-'.\n");
+ 		return -EINVAL;
+ 	}
+ 
+@@ -546,7 +551,7 @@ static int create_trace_uprobe(int argc, char **argv)
+ 		}
+ 	}
+ 
+-	ret = register_trace_uprobe(tu);
++	ret = register_trace_uprobe(tu, is_unique);
+ 	if (ret)
+ 		goto error;
+ 	return 0;
+-- 
+2.17.1
+

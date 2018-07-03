@@ -1,0 +1,14 @@
+[Unit]
+Description=uprobe enabling for all binaries
+Documentation=http://localhost/
+DefaultDependencies=no
+RequiresMountsFor=/sys/kernel/debug/tracing /
+Before=sysinit.target
+
+[Service]
+ExecStart=/usr/bin/enable_uprobes.py /etc/librarytrader/all_triggers
+Type=oneshot
+
+[Install]
+WantedBy=sysinit.target
+RequiredBy=sysinit.target
