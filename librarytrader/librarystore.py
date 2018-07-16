@@ -171,9 +171,9 @@ class LibraryStore(BaseStore):
         self._entrylist.extend(entrylist)
 
     def get_library_objects(self):
-        retval = list(val for (key, val) in self.items()
-                      if not isinstance(val, str))
-        retval.extend(self.get_from_path(path) for path in self._entrylist)
+        retval = set(val for (key, val) in self.items()
+                     if not isinstance(val, str))
+        retval.update(self.get_from_path(path) for path in self._entrylist)
         return retval
 
     def get_executable_objects(self):
