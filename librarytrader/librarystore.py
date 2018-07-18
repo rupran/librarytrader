@@ -393,8 +393,8 @@ class LibraryStore(BaseStore):
             for lib in self.get_library_objects():
                 for address in lib.function_addrs:
                     hex_address = hex(address)
-                    event_name = re.sub(r'[-./\+]', '_', lib.fullname[1:]) \
-                        + '_' + str(hex_address)
+                    event_name = re.sub(r'\W', '_', lib.fullname[1:]) + '_' \
+                        + str(hex_address)
                     outfd.write('u:{} {}:{}\n'.format(event_name,
                                                       lib.fullname,
                                                       hex_address))
