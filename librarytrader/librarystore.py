@@ -293,9 +293,9 @@ class LibraryStore(BaseStore):
                 users = lib.exports[cur]
                 # Add users to transitively called functions
                 for trans_callee in self.get_transitive_calls(lib, cur):
+                    # Draw internal reference
+                    lib.add_export_user(trans_callee, lib.fullname)
                     for user in users:
-                        # Draw internal reference
-                        lib.add_export_user(trans_callee, lib.fullname)
                         # Add user to callee if not already present
                         if not lib.add_export_user(trans_callee, user):
                             continue
