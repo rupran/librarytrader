@@ -387,10 +387,10 @@ class LibraryStore(BaseStore):
 
         logging.debug('... done with %s entries', len(self))
 
-    def generate_uprobe_strings(self, output_name):
+    def generate_uprobe_strings(self, output_name, all_entries=True):
         logging.info('Generating uprobe strings to %s...', output_name)
         with open(output_name, 'w') as outfd:
-            for lib in self.get_library_objects():
+            for lib in self.get_entry_points(all_entries):
                 for address in lib.function_addrs:
                     hex_address = hex(address)
                     event_name = re.sub(r'\W', '_', lib.fullname[1:]) + '_' \
