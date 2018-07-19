@@ -172,7 +172,7 @@ class LibraryStore(BaseStore):
 
     def get_library_objects(self):
         retval = set(val for (key, val) in self.items()
-                     if not isinstance(val, str))
+                     if isinstance(val, Library))
         retval.update(self.get_from_path(path) for path in self._entrylist)
         return retval
 
