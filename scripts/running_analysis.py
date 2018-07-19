@@ -79,7 +79,7 @@ class Runner():
                             'function resolution. Default: only executables')
         parser.add_argument('-e', '--entry-list', action='store',
                             help='Use paths inside the given file as entry ' \
-                            'points regardless of its executable status')
+                            'points regardless of their executable status')
         parser.add_argument('-u', '--used-functions', action='store',
                             help='A file with path:name tuples which are ' \
                             'referenced symbols from dlsym')
