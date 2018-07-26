@@ -1,0 +1,14 @@
+[Unit]
+Description=uprobe enabling for dlopen/dlsym tracing
+Documentation=http://localhost/
+DefaultDependencies=no
+RequiresMountsFor=/sys/kernel/debug/tracing
+Before=enable-uprobes.service
+
+[Service]
+ExecStart=/usr/bin/trace_dlopen_dlsym.sh
+Type=oneshot
+
+[Install]
+WantedBy=enable-uprobes.service
+RequiredBy=enable-uprobes.service
