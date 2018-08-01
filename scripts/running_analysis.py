@@ -37,20 +37,21 @@ class Runner():
         self.store = LibraryStore()
         self.paths = self._get_paths()
 
-        if self.args.entry_list:
-            entry_points = []
-            with open(self.args.entry_list, 'r') as fdesc:
-                entry_points.extend(line.strip() for line in fdesc)
-            self.store.set_additional_entry_points(entry_points)
-            self.paths.extend(entry_points)
-
-        if self.args.used_functions:
-            entry_libs = []
-            with open(self.args.used_functions, 'r') as fdesc:
-                entry_libs.extend(line.strip().split(':')[0] for line in fdesc)
-            entry_libs = list(sorted(set(entry_libs)))
-            self.store.set_additional_entry_points(entry_libs)
-            self.paths.extend(entry_libs)
+        for arg in [self.args.entry_list, self.args.used_functions]:
+            if arg:
+                entry_points = []
+                with open(arg, 'r') as fdesc:
+                    for line in fdesc:
+                        # .split(':') is only required for used_functions but
+                        # doesn't harm in entry_list as we need the first
+                        # element anyway (which is the full match if ':' does
+                        # not exist in the input line)
+                        cur_lib = line.strip().split(':')[0]
+                        if os.path.isfile(cur_lib):
+                            entry_points.append(cur_lib)
+                entry_points = list(sorted(set(entry_points)))
+                self.store.set_additional_entry_points(entry_points)
+                self.paths.extend(entry_points)
 
         self.all_resolved_functions = None
 
@@ -178,6 +179,8 @@ class Runner():
         with open(self.args.used_functions, 'r') as infd:
             for line in infd:
                 library, function = line.strip().split(':')
+                if not os.path.isfile(library):
+                    continue
                 self.store.get_from_path(library).add_export_user(function,
                                                                   'EXTERNAL')
 

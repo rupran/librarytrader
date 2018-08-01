@@ -173,7 +173,9 @@ class LibraryStore(BaseStore):
     def get_library_objects(self):
         retval = set(val for (key, val) in self.items()
                      if isinstance(val, Library))
-        retval.update(self.get_from_path(path) for path in self._entrylist)
+        retval.update(lib for lib in (self.get_from_path(path)
+                                      for path in self._entrylist)
+                      if lib)
         return retval
 
     def get_executable_objects(self):
@@ -183,7 +185,9 @@ class LibraryStore(BaseStore):
     def get_all_reachable_from_executables(self):
         retval = set()
         workset = set(self.get_executable_objects())
-        workset.update(self.get_from_path(path) for path in self._entrylist)
+        workset.update(lib for lib in (self.get_from_path(path)
+                                       for path in self._entrylist)
+                       if lib)
         while workset:
             cur = workset.pop()
             retval.add(cur)
