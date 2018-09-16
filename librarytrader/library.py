@@ -19,6 +19,7 @@ import collections
 import logging
 import os
 
+from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
 class Library:
@@ -34,6 +35,8 @@ class Library:
             self._elffile = ELFFile(self.fd)
             self.elfheader = self._elffile.header
             text = self._elffile.get_section_by_name('.text')
+            if not text:
+                raise ELFError("{} has no text section".format(filename))
             self.load_offset = text['sh_addr'] - text['sh_offset']
 
         self.exports = collections.OrderedDict()
