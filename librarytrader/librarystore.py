@@ -76,6 +76,7 @@ class LibraryStore(BaseStore):
 
     def _find_compatible_libs(self, target, callback, inherited_rpaths=None,
                               ld_library_paths=None):
+        next_level_needed = collections.OrderedDict()
         for needed_name in target.needed_libs:
             rpaths = self.resolver.get_paths(needed_name, target.rpaths,
                                              inherited_rpaths, target.runpaths,
@@ -113,10 +114,15 @@ class LibraryStore(BaseStore):
                     callback(needed, inherited_rpaths=next_rpaths,
                              ld_library_paths=ld_library_paths)
 
-                    target.all_imported_libs.update(needed.all_imported_libs)
+                    # Keep track of the recursively needed libraries
+                    next_level_needed.update(needed.all_imported_libs)
 
                 # We found the compatible one, continue with next needed lib
                 break
+        # Only add the recursively needed libraries after all directly needed
+        # libraries have been added, as symbol resolution is breadth-first
+        # (see ELF specification, Dynamic Linking / Shared Object Dependencies)
+        target.all_imported_libs.update(next_level_needed)
 
     def _resolve_libs(self, library, path="", callback=None,
                       inherited_rpaths=None, ld_library_paths=None):
