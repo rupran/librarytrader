@@ -64,7 +64,7 @@ class Library:
         retval = []
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
 
-        for _, symbol in enumerate(section.iter_symbols()):
+        for idx, symbol in enumerate(section.iter_symbols()):
             symbol_type = symbol['st_info']['type']
 
             if symbol_type == 'STT_FUNC':
@@ -80,24 +80,51 @@ class Library:
             else:
                 continue
 
-            retval.append(symbol)
+            retval.append((idx, symbol))
 
         return retval
+
+    def _get_versioned_name_for_export(self, symbol, idx):
+        versions = self._elffile.get_section_by_name('.gnu.version')
+        verdefs = self._elffile.get_section_by_name('.gnu.version_d')
+
+        if not versions or not verdefs:
+            return symbol.name
+        versym = versions.get_symbol(idx).entry
+        # Possible strings are VER_NDX_LOCAL or VER_NDX_GLOBAL, both
+        # indicating unversioned names
+        if not isinstance(versym['ndx'], str):
+            _, aux = verdefs.get_version(versym['ndx'] & 0x7fff)
+            return "{}@@{}".format(symbol.name, list(aux)[0].name)
+        return symbol.name
+
+    def _get_versioned_name_for_import(self, symbol, idx):
+        versions = self._elffile.get_section_by_name('.gnu.version')
+        verneed = self._elffile.get_section_by_name('.gnu.version_r')
+
+        if not versions or not verneed:
+            return symbol.name
+        versym = versions.get_symbol(idx).entry
+        # See comment for strings above
+        if not isinstance(versym['ndx'], str):
+            _, aux = verneed.get_version(versym['ndx'])
+            return "{}@@{}".format(symbol.name, aux.name)
+        return symbol.name
 
     def parse_dynsym(self):
         section = self._elffile.get_section_by_name('.dynsym')
         if not section:
             return
 
-        for symbol in self._get_function_symbols(section):
+        for idx, symbol in self._get_function_symbols(section):
             shndx = symbol['st_shndx']
             symbol_bind = symbol['st_info']['bind']
             if shndx == 'SHN_UNDEF':
-                self.imports[symbol.name] = None
+                self.imports[self._get_versioned_name_for_import(symbol, idx)] = None
             else:
                 self.function_addrs.add(self._get_symbol_offset(symbol))
                 if symbol_bind != 'STB_LOCAL':
-                    self.exports[symbol.name] = None
+                    self.exports[self._get_versioned_name_for_export(symbol, idx)] = None
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -136,15 +163,18 @@ class Library:
                 # after that.
                 offset += plt['sh_entsize']
 
-                symbol = dynsym.get_symbol(reloc['r_info_sym'])
+                symbol_index = reloc['r_info_sym']
+                symbol = dynsym.get_symbol(symbol_index)
                 if not symbol.name:
                     continue
 
                 plt_addr = base + offset
                 if symbol['st_shndx'] == 'SHN_UNDEF':
-                    self.imports_plt[plt_addr] = symbol.name
+                    self.imports_plt[plt_addr] = \
+                        self._get_versioned_name_for_import(symbol, symbol_index)
                 else:
-                    self.exports_plt[plt_addr] = symbol.name
+                    self.exports_plt[plt_addr] = \
+                        self._get_versioned_name_for_export(symbol, symbol_index)
         else:
             logging.debug('missing sections for %s', self.fullname)
 
@@ -169,9 +199,18 @@ class Library:
 
     def add_export_user(self, name, user_path):
         if name not in self.exports:
-            logging.error('%s not found in %s (user would be %s)', name,
-                          self.fullname, user_path)
-            return
+            # If the name can not be found, try to identify the corresponding
+            # function without the version string attached
+            possible_versioned_symbols = [symbol for symbol in self.exports
+                                          if symbol.split('@@')[0] == name]
+            # If there is one, use it, otherwise it's either not unique or
+            # the corresponding symbol isn't there.
+            if len(possible_versioned_symbols) == 1:
+                name = possible_versioned_symbols[0]
+            else:
+                logging.error('%s not found in %s (user would be %s)', name,
+                              self.fullname, user_path)
+                return False
         if self.exports[name] is None:
             self.exports[name] = []
         if user_path not in self.exports[name]:
@@ -190,7 +229,7 @@ class Library:
             # high bit set in .gnu.version at the corresponding offset
             # TODO: check that!
             # For now, evaluate them all
-            syms = section.get_symbol_by_name(name)
+            syms = section.get_symbol_by_name(name.split('@@')[0])
             for sym in syms:
                 start = self._get_symbol_offset(sym)
                 size = sym.entry['st_size']
@@ -207,7 +246,7 @@ class Library:
         if not symtab:
             return
 
-        for symbol in self._get_function_symbols(symtab):
+        for _, symbol in self._get_function_symbols(symtab):
             shndx = symbol['st_shndx']
             if shndx != 'SHN_UNDEF':
                 self.function_addrs.add(self._get_symbol_offset(symbol))

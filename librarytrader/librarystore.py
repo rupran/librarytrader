@@ -234,6 +234,25 @@ class LibraryStore(BaseStore):
         cache[libname][function] = local_cache
         return cache[libname][function]
 
+    def _find_imported_function(self, function, library, map_func=None):
+        for needed_name, needed_path in library.all_imported_libs.items():
+            imp_lib = self.get_from_path(needed_path)
+            if not imp_lib:
+                logging.warning('|- data for \'%s\' not available in %s!',
+                                needed_name, library.fullname)
+                continue
+
+            exported_functions = imp_lib.exports
+            if map_func:
+                exported_functions = [map_func(x) for x in imp_lib.exports]
+            if function in exported_functions:
+                library.imports[function] = needed_path
+                imp_lib.add_export_user(function, library.fullname)
+
+                logging.debug('|- found \'%s\' in %s', function, needed_path)
+                return True
+        return False
+
     def resolve_functions(self, library):
         if isinstance(library, str):
             name = library
@@ -249,25 +268,15 @@ class LibraryStore(BaseStore):
         logging.debug('Resolving functions in %s', library.fullname)
 
         for function in library.imports:
-            found = False
-            for needed_name, needed_path in library.all_imported_libs.items():
-                imp_lib = self.get_from_path(needed_path)
-                if not imp_lib:
-                    logging.warning('|- data for \'%s\' not available in %s!',
-                                    needed_name, library.fullname)
-                    continue
-
-                if function in imp_lib.exports:
-                    library.imports[function] = needed_path
-                    imp_lib.add_export_user(function, library.fullname)
-
-                    logging.debug('|- found \'%s\' in %s', function,
-                                  needed_path)
-                    found = True
-                    break
+            # Try to find the exact name in all imported libraries...
+            found = self._find_imported_function(function, library)
+            if not found:
+                # ...if that didn't come up with anything, try again, but strip
+                # the version names off all exports of the imported libraries.
+                found = self._find_imported_function(function, library,
+                                                     lambda x: x.split('@@')[0])
 
             if not found:
-                # TODO: consider symbol versioning?
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 

@@ -192,8 +192,7 @@ class TestLibrary(unittest.TestCase):
         store.resolve_functions(lib)
         self.assertEqual(len([func for (func, path) in lib.imports.items()
                               if path]), 2)
-        self.assertIsNotNone(lib.imports['malloc'])
-        # the other one is __cxa_finalize, imported as a weak symbol from libc
+        self.assertNotIn(None, lib.imports.values())
 
     def test_3_resolve_imports_to_library_by_path(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
@@ -202,8 +201,7 @@ class TestLibrary(unittest.TestCase):
         store.resolve_functions(lib.fullname)
         self.assertEqual(len([func for (func, path) in lib.imports.items()
                               if path]), 2)
-        self.assertIsNotNone(lib.imports['malloc'])
-        # the other one is __cxa_finalize, imported as a weak symbol from libc
+        self.assertNotIn(None, lib.imports.values())
 
     call_result = {'external_caller': set(['external']),
                    'second_level_caller': set(['external_caller']),
