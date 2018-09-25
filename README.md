@@ -153,11 +153,11 @@ function in order to get an output line in the trace file whenever the function
 is called.
 
 You can call `generate_uprobe_strings(output_name)` on `LibraryStore` which
-will write a list of uprobe event strings into the file named `output_name`
-- these events can then be written into the `uprobe_events` file in the tracing
-  filesystem of Linux. Note that the optional `all_entries` parameter defaults
-  to `True` for this function as the static analysis might have missed some
-  connections which the dynamic analysis then might discover.
+will write a list of uprobe event strings into the file named `output_name`.
+These events can then be written into the `uprobe_events` file in the tracing
+filesystem of Linux. Note that the optional `all_entries` parameter defaults
+to `True` for this function as the static analysis might have missed some
+connections which the dynamic analysis then might discover.
 
 ## Analyzing a collection of object files
 
