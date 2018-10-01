@@ -162,7 +162,7 @@ class Runner():
         for lib in libobjs:
             result[lib.fullname] = {}
             for function, users in lib.exports.items():
-                result[lib.fullname][function] = users if users else []
+                result[lib.fullname][function] = users
 
         return result
 
@@ -235,12 +235,12 @@ class Runner():
                 if do_print:
                     print('-- {}: {}: {}'.format(function, len(importers),
                                                  importers))
-            if len(self.store[lib].exports) > 0 and ".so" in lib:
-                pctg = len(list(x for (x, y) in functions.items() if len(y) > 0)) \
+            if self.store[lib].exports and ".so" in lib:
+                pctg = len(list(x for (x, y) in functions.items() if y)) \
                        / len(self.store[lib].exports)
                 ipctg = int(pctg * 100)
-                if 'libc-2.23' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
-                    print(ipctg, pctg, len(list(x for (x, y) in functions.items() if len(y) > 0)), lib)
+                if 'libc-2.2' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
+                    print(ipctg, pctg, len(list(x for (x, y) in functions.items() if y)), lib)
 #                if pctg == 0:
 #                    print('0 percent: {}'.format(lib))
                 histo_percent[ipctg].append(lib)
@@ -269,9 +269,7 @@ class Runner():
         res = []
         for library in libobjs:
             for function, callers in library.exports.items():
-                count = 0
-                if callers is not None:
-                    count = len(set(callers))
+                count = len(callers)
                 res.append(('{}:{}'.format(library.fullname, function), count))
 
         sorted_callees = list(sorted(res, key=lambda x: x[1], reverse=True))

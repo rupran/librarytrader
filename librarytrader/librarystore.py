@@ -336,7 +336,10 @@ class LibraryStore(BaseStore):
             else:
                 lib_dict["type"] = "library"
                 lib_dict["imports"] = value.imports
-                lib_dict["exports"] = value.exports
+                exports_dict = {}
+                for name, users in value.exports.items():
+                    exports_dict[name] = list(users)
+                lib_dict["exports"] = exports_dict
                 lib_dict["function_addrs"] = list(value.function_addrs)
                 lib_dict["imports_plt"] = []
                 for addr, name in value.imports_plt.items():
@@ -377,7 +380,9 @@ class LibraryStore(BaseStore):
                 else:
                     library = Library(key, load_elffile=False)
                     library.imports = value["imports"]
-                    library.exports = value["exports"]
+                    library.exports = collections.OrderedDict()
+                    for name, users in value["exports"].items():
+                        library.exports[name] = set(users)
                     library.function_addrs = set(value["function_addrs"])
                     imports_plt_dict = collections.OrderedDict()
                     for addr, name in value["imports_plt"]:

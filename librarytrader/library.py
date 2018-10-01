@@ -124,7 +124,7 @@ class Library:
             else:
                 self.function_addrs.add(self._get_symbol_offset(symbol))
                 if symbol_bind != 'STB_LOCAL':
-                    self.exports[self._get_versioned_name_for_export(symbol, idx)] = None
+                    self.exports[self._get_versioned_name_for_export(symbol, idx)] = set()
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -211,10 +211,8 @@ class Library:
                 logging.error('%s not found in %s (user would be %s)', name,
                               self.fullname, user_path)
                 return False
-        if self.exports[name] is None:
-            self.exports[name] = []
         if user_path not in self.exports[name]:
-            self.exports[name].append(user_path)
+            self.exports[name].add(user_path)
             return True
         return False
 
