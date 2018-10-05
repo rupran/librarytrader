@@ -68,6 +68,7 @@ def disassemble_objdump(library, start, length):
 
 def find_calls_from_objdump(library, disas, symbols):
     local_calls = set()
+    import_calls = set()
 
     for _, decoded in disas:
         match = CALL_REGEX.match(decoded)
@@ -85,10 +86,9 @@ def find_calls_from_objdump(library, disas, symbols):
             elif target in library.exports_plt:
                 local_calls.add(library.exports_plt[target])
             elif target in library.imports_plt:
-                # TODO: see comment in capstone below
-                pass
+                import_calls.add(library.imports_plt[target])
 
-    return local_calls
+    return (local_calls, import_calls)
 
 def disassemble_capstone(library, start, length):
     disassembly = []
@@ -118,6 +118,7 @@ def disassemble_capstone(library, start, length):
 
 def find_calls_from_capstone(library, disas, symbols):
     local_calls = set()
+    import_calls = set()
     for instr in disas:
         if instr.group(capstone.x86_const.X86_GRP_CALL) \
                 or instr.group(capstone.x86_const.X86_GRP_JUMP):
@@ -130,17 +131,15 @@ def find_calls_from_capstone(library, disas, symbols):
             elif target in library.exports_plt:
                 local_calls.add(library.exports_plt[target])
             elif target in library.imports_plt:
-                # TODO: Here we could generate call graph data for used imports
-                # from other libraries, i.e. more fine grained usage data.
-                logging.debug('plt_import_call at %x to %s', instr.address,
-                              library.imports_plt[target])
+                import_calls.add(library.imports_plt[target])
 
-    return local_calls
+    return (local_calls, import_calls)
 
 def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     logging.debug('Processing %s', library.fullname)
     before = time.time()
-    calls = defaultdict(set)
+    internal_calls = defaultdict(set)
+    external_calls = defaultdict(set)
     ranges = library.get_function_ranges()
     symbols = {}
 
@@ -155,25 +154,27 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     for name, cur_range in ranges.items():
         for start, size in cur_range:
             disas, resolution_function = disas_function(library, start, size)
-            local_calls = resolution_function(library, disas, symbols)
+            local_calls, import_calls = resolution_function(library, disas, symbols)
             if local_calls:
-                calls[name] = local_calls
+                internal_calls[name] = local_calls
+            if import_calls:
+                external_calls[name] = import_calls
 
     after = time.time()
     duration = after - before
     logging.info('Thread %d: %s took %.3f s', os.getpid(),
                                               library.fullname,
                                               duration)
-    return (calls, (after - before))
+    return (internal_calls, external_calls, (after - before))
 
 def map_wrapper(path):
     try:
         lib = Library(path, parse=True)
     except (OSError, ELFError) as err:
         logging.error('%s: %s', path, err)
-        return (None, None, 0)
-    calls, duration = resolve_calls_in_library(lib)
-    return (lib.fullname, calls, duration)
+        return (None, None, None, 0)
+    internal_calls, external_calls, duration = resolve_calls_in_library(lib)
+    return (lib.fullname, internal_calls, external_calls, duration)
 
 def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     libs = [lib.fullname for lib in sorted(store.get_library_objects(),
@@ -183,11 +184,12 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     result = pool.map(map_wrapper, libs, chunksize=1)
     pool.close()
 
-    for fullname, calls, _ in result:
-        store[fullname].calls = calls
+    for fullname, internal_calls, external_calls, _ in result:
+        store[fullname].internal_calls = internal_calls
+        store[fullname].external_calls = external_calls
 
     logging.info('... done!')
-    longest = [(v[0], v[2]) for v in sorted(result, key=lambda x: -x[2])]
+    longest = [(v[0], v[3]) for v in sorted(result, key=lambda x: -x[3])]
     logging.info(longest[:20])
-    logging.info('total number of calls: %d', sum(len(v[1].values()) for v in result))
+    logging.info('total number of calls: %d', sum(len(v[2].values()) + len(v[1].values()) for v in result))
     return result

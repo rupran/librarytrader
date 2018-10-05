@@ -52,7 +52,9 @@ class Library:
         self.runpaths = []
         self.soname = None
 
-        self.calls = {}
+        self.ranges = None
+        self.external_calls = {}
+        self.internal_calls = {}
 
         if parse:
             self.parse_functions()
@@ -183,6 +185,7 @@ class Library:
         self.parse_dynamic()
         self.parse_plt()
         self.gather_hookable_addresses_from_symtab()
+        self.get_function_ranges()
         if release:
             self._release_elffile()
 
@@ -217,10 +220,13 @@ class Library:
         return False
 
     def get_function_ranges(self):
-        ranges = collections.defaultdict(list)
+        if self.ranges is not None:
+            return self.ranges
+
+        self.ranges = collections.defaultdict(list)
         section = self._elffile.get_section_by_name('.dynsym')
         if not section:
-            return ranges
+            return self.ranges
 
         for name in self.exports:
             # Could me more than one => symbol versioning. One probably has the
@@ -231,9 +237,9 @@ class Library:
             for sym in syms:
                 start = self._get_symbol_offset(sym)
                 size = sym.entry['st_size']
-                ranges[name].append((start, size))
+                self.ranges[name].append((start, size))
 
-        return ranges
+        return self.ranges
 
     def gather_hookable_addresses_from_symtab(self):
         if self.elfheader['e_type'] == 'ET_EXEC':

@@ -222,20 +222,29 @@ class LibraryStore(BaseStore):
         # No cache hit, calculate it
         local_cache = set()
 
-        # If there are no calls, return the empty set
-        if function not in library.calls:
-            cache[libname][function] = set()
-            return set()
+        if function in library.internal_calls:
+            working_on.add(function)
+            for callee in library.internal_calls[function]:
+                local_cache.add((callee, library))
+                if callee in working_on:
+                    continue
+                subcalls = self.get_transitive_calls(library, callee, cache,
+                                                     working_on)
+                local_cache.update(subcalls)
+            working_on.remove(function)
 
-        working_on.add(function)
-        for callee in library.calls[function]:
-            local_cache.add(callee)
-            if callee in working_on:
-                continue
-            subcalls = self.get_transitive_calls(library, callee, cache,
-                                                 working_on)
-            local_cache.update(subcalls)
-        working_on.remove(function)
+        if function in library.external_calls:
+            for callee in library.external_calls[function]:
+                if callee in library.imports:
+                    target_lib = self.get_from_path(library.imports[callee])
+                else:
+                    logging.debug('external_calls: no target for \'%s\'', callee)
+                    continue
+                if target_lib is None:
+                    logging.warning('%s: call to unknown target for function %s',
+                                    libname, callee)
+                    continue
+                local_cache.add((callee, target_lib))
 
         cache[libname][function] = local_cache
         return cache[libname][function]
@@ -300,9 +309,12 @@ class LibraryStore(BaseStore):
         logging.info('Propagating export users through calls...')
         libobjs = self.get_entry_points(all_entries)
 
+        lib_worklist = set(libobjs)
         # Propagate usage information inside libraries
-        for lib in libobjs:
-            logging.debug('Propagating in %s', lib.fullname)
+        while lib_worklist:
+            lib = lib_worklist.pop()
+            logging.debug('Propagating in %s, worklist length: %d', lib.fullname,
+                          len(lib_worklist))
             # Starting points are all referenced exports
             worklist = collections.deque(function for function, users
                                          in lib.exports.items() if users)
@@ -311,15 +323,18 @@ class LibraryStore(BaseStore):
                 cur = worklist.popleft()
                 users = lib.exports[cur]
                 # Add users to transitively called functions
-                for trans_callee in self.get_transitive_calls(lib, cur):
-                    # Draw internal reference
-                    lib.add_export_user(trans_callee, lib.fullname)
+                for (trans_callee, called_lib) in self.get_transitive_calls(lib, cur):
+                    # Draw direct reference
+                    called_lib.add_export_user(trans_callee, lib.fullname)
+                    if lib != called_lib:
+                        lib_worklist.add(called_lib)
                     for user in users:
                         # Add user to callee if not already present
-                        if not lib.add_export_user(trans_callee, user):
+                        if not called_lib.add_export_user(trans_callee, user):
                             continue
-                        # Only add to worklist if not queued already
-                        if trans_callee not in worklist:
+                        # Only add to worklist if the callee is in the current
+                        # library and it is not queued already
+                        if called_lib == lib and trans_callee not in worklist:
                             worklist.append(trans_callee)
 
         logging.info('... done!')
@@ -357,10 +372,14 @@ class LibraryStore(BaseStore):
                     lib_dict["all_imported_libs"].append([lib, path])
                 lib_dict["rpaths"] = value.rpaths
                 # We can't dump sets, so convert to a list
-                calls_dict = {}
-                for caller, calls in value.calls.items():
-                    calls_dict[caller] = list(calls)
-                lib_dict["calls"] = calls_dict
+                internal_calls_dict = {}
+                for caller, calls in value.internal_calls.items():
+                    internal_calls_dict[caller] = list(calls)
+                lib_dict["internal_calls"] = internal_calls_dict
+                external_calls_dict = {}
+                for caller, calls in value.external_calls.items():
+                    external_calls_dict[caller] = list(calls)
+                lib_dict["external_calls"] = external_calls_dict
 
             output[key] = lib_dict
 
@@ -404,8 +423,10 @@ class LibraryStore(BaseStore):
                         all_imported_libs_dict[lib] = path
                     library.all_imported_libs = all_imported_libs_dict
                     library.rpaths = value["rpaths"]
-                    for caller, calls in value["calls"].items():
-                        library.calls[caller] = set(calls)
+                    for caller, calls in value["internal_calls"].items():
+                        library.internal_calls[caller] = set(calls)
+                    for caller, calls in value["external_calls"].items():
+                        library.external_calls[caller] = set(calls)
                     #print('{}: {}'.format(key, sorted(value["calls"].items())))
                     self._add_library(key, library)
 

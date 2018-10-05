@@ -213,7 +213,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
 
         self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
@@ -222,7 +222,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
 
         self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
@@ -231,7 +231,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
 
         # The results should match the variant with symbolic functions
         self.assertEquals(len(calls), 4)
@@ -241,7 +241,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
 
         # The results should match the variant with symbolic functions
         self.assertEquals(len(calls), 4)
@@ -253,7 +253,8 @@ class TestLibrary(unittest.TestCase):
         result = resolve_calls(store)
         # calls for mock.so, libc-2.23.so and ld-2.23.so
         self.assertEqual(len(result), 3)
-        self.assertDictEqual(dict(store[lib.fullname].calls), self.call_result)
+        self.assertDictEqual(dict(store[lib.fullname].internal_calls),
+                             self.call_result)
 
     def test_5_transitive_calls(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True,
@@ -261,13 +262,22 @@ class TestLibrary(unittest.TestCase):
 
         result = store.get_transitive_calls(lib, 'second_level_caller')
         # Check that transitive callees are returned
-        self.assertSetEqual(result, set(['external_caller', 'external']))
+        self.assertSetEqual(result, set([('external_caller', lib),
+                                         ('external', lib)]))
 
         # Check that functions calling themselves recursively work and cover
         # the use of the cache (external is called from recursive and its
         # recursive_helper function)
         result = store.get_transitive_calls(lib, 'recursive')
-        self.assertSetEqual(result, set(['external', 'recursive_helper', 'recursive']))
+        self.assertSetEqual(result, set([('external', lib),
+                                         ('recursive_helper', lib),
+                                         ('recursive', lib)]))
+
+        # Check transitive calls into other libraries
+        store.resolve_functions(lib)
+        result = store.get_transitive_calls(lib, 'ref_internal')
+        self.assertIn(('malloc@@GLIBC_2.2.5',
+                       store.get_from_path(lib.needed_libs['libc.so.6'])), result)
 
     def test_6_propagate_calls_all_entries(self):
         store, binary = create_store_and_lib(TEST_BINARY,
