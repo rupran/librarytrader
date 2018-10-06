@@ -55,7 +55,7 @@ class LibraryStore(BaseStore):
     def get_from_path(self, path):
         result = self.get(path)
         # Symlink-like behaviour with strings
-        while isinstance(result, str):
+        while result is not None and not isinstance(result, Library):
             result = self.get(result)
         return result
 
@@ -345,7 +345,7 @@ class LibraryStore(BaseStore):
         output = {}
         for path, content in self.items():
             lib_dict = {}
-            if isinstance(value, str):
+            if not isinstance(content, Library):
                 lib_dict["type"] = "link"
                 lib_dict["target"] = content
             else:
