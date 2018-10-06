@@ -159,7 +159,7 @@ class Library:
         if relaplt and plt and dynsym:
             base = plt['sh_offset']
             offset = 0
-            for reloc in relaplt.iter_relocations():
+            for reloc in sorted(relaplt.iter_relocations(), key=lambda rel: rel['r_offset']):
                 # The first entry in .plt is special, it contains the logic for
                 # all other entries to jump into the loader. Real functions come
                 # after that.
