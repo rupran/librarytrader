@@ -343,45 +343,36 @@ class LibraryStore(BaseStore):
         logging.debug('Saving results to \'%s\'', output_file)
 
         output = {}
-        for key, value in self.items():
+        for path, content in self.items():
             lib_dict = {}
             if isinstance(value, str):
                 lib_dict["type"] = "link"
-                lib_dict["target"] = value
+                lib_dict["target"] = content
             else:
-                lib_dict["type"] = "library"
-                lib_dict["imports"] = value.imports
-                exports_dict = {}
-                for name, users in value.exports.items():
-                    exports_dict[name] = list(users)
-                lib_dict["exports"] = exports_dict
-                lib_dict["function_addrs"] = list(value.function_addrs)
-                lib_dict["imports_plt"] = []
-                for addr, name in value.imports_plt.items():
-                    lib_dict["imports_plt"].append([addr, name])
-                lib_dict["exports_plt"] = []
-                for addr, name in value.exports_plt.items():
-                    lib_dict["exports_plt"].append([addr, name])
-                lib_dict["needed_libs"] = []
-                # Order is relevant for needed_libs traversal, so convert
-                # dictionary to a list to preserve ordering in JSON
-                for lib, path in value.needed_libs.items():
-                    lib_dict["needed_libs"].append([lib, path])
-                lib_dict["all_imported_libs"] = []
-                for lib, path in value.all_imported_libs.items():
-                    lib_dict["all_imported_libs"].append([lib, path])
-                lib_dict["rpaths"] = value.rpaths
-                # We can't dump sets, so convert to a list
-                internal_calls_dict = {}
-                for caller, calls in value.internal_calls.items():
-                    internal_calls_dict[caller] = list(calls)
-                lib_dict["internal_calls"] = internal_calls_dict
-                external_calls_dict = {}
-                for caller, calls in value.external_calls.items():
-                    external_calls_dict[caller] = list(calls)
-                lib_dict["external_calls"] = external_calls_dict
+                def dump_dict_with_set_value(target_dict, library, name):
+                    res = {}
+                    for key, value in getattr(library, name).items():
+                        res[key] = list(value)
+                    target_dict[name] = res
+                def dump_ordered_dict_as_list(target_dict, library, name):
+                    res = []
+                    for key, value in getattr(library, name).items():
+                        res.append([key, value])
+                    target_dict[name] = res
 
-            output[key] = lib_dict
+                lib_dict["type"] = "library"
+                lib_dict["imports"] = content.imports
+                dump_dict_with_set_value(lib_dict, content, "exports")
+                lib_dict["function_addrs"] = list(content.function_addrs)
+                dump_ordered_dict_as_list(lib_dict, content, "imports_plt")
+                dump_ordered_dict_as_list(lib_dict, content, "exports_plt")
+                dump_ordered_dict_as_list(lib_dict, content, "needed_libs")
+                dump_ordered_dict_as_list(lib_dict, content, "all_imported_libs")
+                lib_dict["rpaths"] = content.rpaths
+                dump_dict_with_set_value(lib_dict, content, "internal_calls")
+                dump_dict_with_set_value(lib_dict, content, "external_calls")
+
+            output[path] = lib_dict
 
         with open(output_file, 'w') as outfd:
             json.dump(output, outfd)
@@ -392,43 +383,32 @@ class LibraryStore(BaseStore):
         logging.debug('loading input from \'%s\'...', input_file)
         with open(input_file, 'r') as infd:
             in_dict = json.load(infd)
-            for key, value in in_dict.items():
-                logging.debug("loading %s -> %s", key, value["type"])
-                if value["type"] == "link":
-                    self._add_library(key, value["target"])
+            for path, content in in_dict.items():
+                logging.debug("loading %s -> %s", path, content["type"])
+                if content["type"] == "link":
+                    self._add_library(path, content["target"])
                 else:
-                    library = Library(key, load_elffile=False)
-                    library.imports = value["imports"]
-                    library.exports = collections.OrderedDict()
-                    for name, users in value["exports"].items():
-                        library.exports[name] = set(users)
-                    library.function_addrs = set(value["function_addrs"])
-                    imports_plt_dict = collections.OrderedDict()
-                    for addr, name in value["imports_plt"]:
-                        imports_plt_dict[addr] = name
-                    library.imports_plt = imports_plt_dict
-                    exports_plt_dict = collections.OrderedDict()
-                    for addr, name in value["exports_plt"]:
-                        exports_plt_dict[addr] = name
-                    library.exports_plt = exports_plt_dict
-                    # Recreate order from list
-                    needed_libs = value["needed_libs"]
-                    needed_libs_dict = collections.OrderedDict()
-                    for lib, path in needed_libs:
-                        needed_libs_dict[lib] = path
-                    library.needed_libs = needed_libs_dict
-                    all_imported_libs = value["all_imported_libs"]
-                    all_imported_libs_dict = collections.OrderedDict()
-                    for lib, path in all_imported_libs:
-                        all_imported_libs_dict[lib] = path
-                    library.all_imported_libs = all_imported_libs_dict
-                    library.rpaths = value["rpaths"]
-                    for caller, calls in value["internal_calls"].items():
-                        library.internal_calls[caller] = set(calls)
-                    for caller, calls in value["external_calls"].items():
-                        library.external_calls[caller] = set(calls)
-                    #print('{}: {}'.format(key, sorted(value["calls"].items())))
-                    self._add_library(key, library)
+                    library = Library(path, load_elffile=False)
+                    def load_dict_with_set_values(from_dict, library, name):
+                        for key, value in from_dict[library.fullname][name].items():
+                            getattr(library, name)[key] = set(value)
+                    def load_ordered_dict_from_list(from_dict, library, name):
+                        # Recreate order from list
+                        for key, value in from_dict[library.fullname][name]:
+                            getattr(library, name)[key] = value
+
+                    library.imports = content["imports"]
+                    load_dict_with_set_values(in_dict, library, "exports")
+                    library.function_addrs = set(content["function_addrs"])
+                    load_ordered_dict_from_list(in_dict, library, "imports_plt")
+                    load_ordered_dict_from_list(in_dict, library, "exports_plt")
+                    load_ordered_dict_from_list(in_dict, library, "needed_libs")
+                    load_ordered_dict_from_list(in_dict, library, "all_imported_libs")
+                    library.rpaths = content["rpaths"]
+                    load_dict_with_set_values(in_dict, library, "internal_calls")
+                    load_dict_with_set_values(in_dict, library, "external_calls")
+                    #print('{}: {}'.format(path, sorted(["calls"].items())))
+                    self._add_library(path, library)
 
         logging.debug('... done with %s entries', len(self))
 
