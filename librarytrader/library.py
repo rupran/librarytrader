@@ -39,6 +39,8 @@ class Library:
                 raise ELFError("{} has no text section".format(filename))
             self.load_offset = text['sh_addr'] - text['sh_offset']
 
+        self._version_names = {}
+
         self.exports = collections.OrderedDict()
         self.function_addrs = set()
         self.imports = collections.OrderedDict()
@@ -86,32 +88,10 @@ class Library:
 
         return retval
 
-    def _get_versioned_name_for_export(self, symbol, idx):
-        versions = self._elffile.get_section_by_name('.gnu.version')
-        verdefs = self._elffile.get_section_by_name('.gnu.version_d')
-
-        if not versions or not verdefs:
+    def _get_versioned_name(self, symbol, idx):
+        if idx not in self._version_names:
             return symbol.name
-        versym = versions.get_symbol(idx).entry
-        # Possible strings are VER_NDX_LOCAL or VER_NDX_GLOBAL, both
-        # indicating unversioned names
-        if not isinstance(versym['ndx'], str):
-            _, aux = verdefs.get_version(versym['ndx'] & 0x7fff)
-            return "{}@@{}".format(symbol.name, list(aux)[0].name)
-        return symbol.name
-
-    def _get_versioned_name_for_import(self, symbol, idx):
-        versions = self._elffile.get_section_by_name('.gnu.version')
-        verneed = self._elffile.get_section_by_name('.gnu.version_r')
-
-        if not versions or not verneed:
-            return symbol.name
-        versym = versions.get_symbol(idx).entry
-        # See comment for strings above
-        if not isinstance(versym['ndx'], str):
-            _, aux = verneed.get_version(versym['ndx'])
-            return "{}@@{}".format(symbol.name, aux.name)
-        return symbol.name
+        return '{}@@{}'.format(symbol.name, self._version_names[idx])
 
     def parse_dynsym(self):
         section = self._elffile.get_section_by_name('.dynsym')
@@ -122,11 +102,11 @@ class Library:
             shndx = symbol['st_shndx']
             symbol_bind = symbol['st_info']['bind']
             if shndx == 'SHN_UNDEF':
-                self.imports[self._get_versioned_name_for_import(symbol, idx)] = None
+                self.imports[self._get_versioned_name(symbol, idx)] = None
             else:
                 self.function_addrs.add(self._get_symbol_offset(symbol))
                 if symbol_bind != 'STB_LOCAL':
-                    self.exports[self._get_versioned_name_for_export(symbol, idx)] = set()
+                    self.exports[self._get_versioned_name(symbol, idx)] = set()
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -173,14 +153,46 @@ class Library:
                 plt_addr = base + offset
                 if symbol['st_shndx'] == 'SHN_UNDEF':
                     self.imports_plt[plt_addr] = \
-                        self._get_versioned_name_for_import(symbol, symbol_index)
+                        self._get_versioned_name(symbol, symbol_index)
                 else:
                     self.exports_plt[plt_addr] = \
-                        self._get_versioned_name_for_export(symbol, symbol_index)
+                        self._get_versioned_name(symbol, symbol_index)
         else:
             logging.debug('missing sections for %s', self.fullname)
 
+    def parse_versions(self):
+        versions = self._elffile.get_section_by_name('.gnu.version')
+        if not versions:
+            return
+
+        idx_to_names = {}
+
+        # Parse version definitions for version index -> name mapping
+        verdefs = self._elffile.get_section_by_name('.gnu.version_d')
+        if verdefs:
+            for verdef, verdaux in verdefs.iter_versions():
+                idx_to_names[int(verdef.entry['vd_ndx'])] = list(verdaux)[0].name
+
+        # Parse version requirements for version index -> version name mapping
+        verneed = self._elffile.get_section_by_name('.gnu.version_r')
+        if verneed:
+            for _, vernaux in verneed.iter_versions():
+                for aux in vernaux:
+                    idx_to_names[int(aux['vna_other'])] = aux.name
+
+        # Directly construct mapping from symbol index to version name
+        for idx, version in enumerate(versions.iter_symbols()):
+            version_idx = version['ndx']
+            # If it's a string, it's either VER_NDX_LOCAL or VER_NDX_GLOBAL,
+            # both indicating unversioned names
+            if isinstance(version_idx, int):
+                # And-ing out bit 15 is necessary as it might be set to
+                # indicate the symbol in question should be treated as hidden.
+                self._version_names[idx] = idx_to_names[version_idx & 0x7fff]
+
+
     def parse_functions(self, release=False):
+        self.parse_versions()
         self.parse_dynsym()
         self.parse_dynamic()
         self.parse_plt()
