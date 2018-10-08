@@ -193,7 +193,7 @@ class Runner():
     def print_needed_paths(self):
         # Demonstration for needed paths resolution
         libobjs = self.store.get_library_objects()
-        lib = libobjs[0]
+        lib = next(iter(libobjs))
 
         print('= Needed libraries for {}'.format(lib.fullname))
         for name, path in lib.needed_libs.items():
@@ -214,7 +214,7 @@ class Runner():
     def resolve_and_print_one(self):
         # Demonstration for resolving
         libobjs = self.store.get_library_objects()
-        lib = libobjs[0]
+        lib = next(iter(libobjs))
 
         print('= Resolving functions in {}'.format(lib.fullname))
         self.store.resolve_functions(lib)
