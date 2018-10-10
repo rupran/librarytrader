@@ -21,6 +21,8 @@ import os
 
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
+from elftools.common.utils import struct_parse
+from elftools.construct import Padding, SLInt32, Struct
 
 def _round_up_to_alignment(size, alignment):
     if size == 0:
@@ -178,7 +180,77 @@ class Library:
                     self.exports_plt[plt_addr] = \
                         self._get_versioned_name(symbol, symbol_index)
         else:
-            logging.debug('missing sections for %s', self.fullname)
+            logging.debug('missing sections (.rel{a}.plt, .plt., .dynsym) for %s',
+                          self.fullname)
+
+    def parse_plt_got(self):
+        pltgot = self._elffile.get_section_by_name('.plt.got')
+        if not pltgot:
+            return
+
+        entrysize = _round_up_to_alignment(pltgot['sh_entsize'],
+                                           pltgot['sh_addralign'])
+        count = pltgot['sh_size'] // entrysize
+
+        # We only need the .got/.got.plt offset for 32 bit binaries
+        if self.elfheader['e_machine'] == 'EM_386':
+            got = self._elffile.get_section_by_name('.got.plt')
+            if not got:
+                got = self._elffile.get_section_by_name('.got')
+            if not got:
+                logging.debug('no .got section found')
+                return
+
+        # The names are different for 32 vs 64 bit binaries
+        if self.elfheader['e_machine'] == 'EM_386':
+            dynrel = self._elffile.get_section_by_name('.rel.dyn')
+        else:
+            # For 64 bit, the entries could be in .rela.got or merged into
+            # .rela.dyn in the linker script, so try in that order.
+            dynrel = self._elffile.get_section_by_name('.rela.got')
+            if not dynrel:
+                dynrel = self._elffile.get_section_by_name('.rela.dyn')
+        if not dynrel:
+            logging.debug('no .rel{a}.{dyn,got} section found')
+            return
+
+        dynrel_relocs = {e['r_offset']: e['r_info_sym'] for e in dynrel.iter_relocations()}
+
+        # To find the corresponding symbol name, we need the .dynsym section
+        dynsym = self._elffile.get_section_by_name('.dynsym')
+        if not dynsym:
+            logging.debug('no .dynsym section found')
+            return
+
+        for i in range(count):
+            cur_entry = pltgot['sh_offset'] + i * entrysize
+            pltgot_entry = struct_parse(Struct(None,
+                                               Padding(2), # call indirect
+                                               SLInt32('offset'),
+                                               Padding(2)  # NOP to fill to 8 bytes
+                                              ),
+                                        self._elffile.stream,
+                                        stream_pos=cur_entry)
+            offset = pltgot_entry['offset']
+            if self.elfheader['e_machine'] == 'EM_386':
+                # 32-bit: relative to .got.plt/.got base address
+                got_entry = got['sh_addr'] + offset
+            else:
+                # x86_64: relative to RIP. This means adding 6 to the offset
+                # as RIP-relative addressing is based on the address of the
+                # _next_ instruction rather than the current one
+                got_entry = cur_entry + offset + 6 + self.load_offset
+
+            if got_entry in dynrel_relocs:
+                symbol_index = dynrel_relocs[got_entry]
+                symbol = dynsym.get_symbol(symbol_index)
+#                    print('Found {} - {}'.format(hex(cur_entry), symbol.name))
+                if symbol['st_shndx'] == 'SHN_UNDEF':
+                    self.imports_plt[cur_entry] = \
+                        self._get_versioned_name(symbol, symbol_index)
+                else:
+                    self.exports_plt[cur_entry] = \
+                        self._get_versioned_name(symbol, symbol_index)
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
@@ -216,6 +288,7 @@ class Library:
         self.parse_dynsym()
         self.parse_dynamic()
         self.parse_plt()
+        self.parse_plt_got()
         self.gather_hookable_addresses_from_symtab()
         self.get_function_ranges()
         if release:
