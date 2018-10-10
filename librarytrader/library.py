@@ -22,6 +22,13 @@ import os
 from elftools.common.exceptions import ELFError
 from elftools.elf.elffile import ELFFile
 
+def _round_up_to_alignment(size, alignment):
+    if size == 0:
+        size = 1
+    if alignment:
+        return ((size + alignment - 1) // alignment) * alignment
+    return size
+
 class Library:
 
     def __init__(self, filename, load_elffile=True, parse=False):
@@ -133,24 +140,33 @@ class Library:
                     self.function_addrs.add(self.elfheader['e_entry'])
 
     def parse_plt(self):
-        relaplt = self._elffile.get_section_by_name('.rela.plt')
+        if self.elfheader['e_machine'] == 'EM_386':
+            relaplt = self._elffile.get_section_by_name('.rel.plt')
+        else:
+            relaplt = self._elffile.get_section_by_name('.rela.plt')
         plt = self._elffile.get_section_by_name('.plt')
         dynsym = self._elffile.get_section_by_name('.dynsym')
         if relaplt and plt and dynsym:
-            base = plt['sh_offset']
-            offset = 0
+            plt_base = plt['sh_offset']
+
+            # On 32-bit binaries, sh_entsize might be 4 even though an entry
+            # in the .plt is in fact 16 bytes long, so round up to sh_addralign.
+            # (see https://reviews.llvm.org/D9560)
+            increment = _round_up_to_alignment(plt['sh_entsize'], plt['sh_addralign'])
+
+            plt_offset = 0
             for reloc in sorted(relaplt.iter_relocations(), key=lambda rel: rel['r_offset']):
                 # The first entry in .plt is special, it contains the logic for
                 # all other entries to jump into the loader. Real functions come
                 # after that.
-                offset += plt['sh_entsize']
+                plt_offset += increment
 
                 symbol_index = reloc['r_info_sym']
                 symbol = dynsym.get_symbol(symbol_index)
                 if not symbol.name:
                     continue
 
-                plt_addr = base + offset
+                plt_addr = plt_base + plt_offset
                 if symbol['st_shndx'] == 'SHN_UNDEF':
                     self.imports_plt[plt_addr] = \
                         self._get_versioned_name(symbol, symbol_index)
