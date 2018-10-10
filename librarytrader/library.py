@@ -61,7 +61,7 @@ class Library:
         self.runpaths = []
         self.soname = None
 
-        self.ranges = None
+        self.ranges = collections.defaultdict(list)
         self.external_calls = {}
         self.internal_calls = {}
 
@@ -111,9 +111,13 @@ class Library:
             if shndx == 'SHN_UNDEF':
                 self.imports[self._get_versioned_name(symbol, idx)] = None
             else:
-                self.function_addrs.add(self._get_symbol_offset(symbol))
+                start = self._get_symbol_offset(symbol)
+                self.function_addrs.add(start)
                 if symbol_bind != 'STB_LOCAL':
-                    self.exports[self._get_versioned_name(symbol, idx)] = set()
+                    name = self._get_versioned_name(symbol, idx)
+                    self.exports[name] = set()
+                    size = symbol['st_size']
+                    self.ranges[name].append((start, size))
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -248,25 +252,6 @@ class Library:
         return False
 
     def get_function_ranges(self):
-        if self.ranges is not None:
-            return self.ranges
-
-        self.ranges = collections.defaultdict(list)
-        section = self._elffile.get_section_by_name('.dynsym')
-        if not section:
-            return self.ranges
-
-        for name in self.exports:
-            # Could me more than one => symbol versioning. One probably has the
-            # high bit set in .gnu.version at the corresponding offset
-            # TODO: check that!
-            # For now, evaluate them all
-            syms = section.get_symbol_by_name(name.split('@@')[0])
-            for sym in syms:
-                start = self._get_symbol_offset(sym)
-                size = sym.entry['st_size']
-                self.ranges[name].append((start, size))
-
         return self.ranges
 
     def gather_hookable_addresses_from_symtab(self):
