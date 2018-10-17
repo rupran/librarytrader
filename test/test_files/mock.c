@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 static int state = 0;
+static void *internal (int n) __attribute__((noinline));
 
 int external(int n){
     return n + 1;

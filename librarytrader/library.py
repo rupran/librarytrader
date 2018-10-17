@@ -24,6 +24,8 @@ from elftools.elf.elffile import ELFFile
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
 
+DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug', '.build-id')
+
 def _round_up_to_alignment(size, alignment):
     if size == 0:
         size = 1
@@ -47,25 +49,39 @@ class Library:
             if not text:
                 raise ELFError("{} has no text section".format(filename))
             self.load_offset = text['sh_addr'] - text['sh_offset']
+            self.entrypoint = None
+            if self.elfheader['e_type'] == 'ET_EXEC':
+                self.entrypoint = self.elfheader['e_entry'] - self.load_offset
 
         self._version_names = {}
 
-        self.exports = collections.OrderedDict()
+        # exported_addrs: address -> symbol names
+        self.exported_addrs = collections.defaultdict(list)
+        # exported_names: symbol name -> address
+        self.exported_names = collections.OrderedDict()
+        # export_users: address -> list of referencing library paths
+        self.export_users = collections.OrderedDict()
         self.function_addrs = set()
+        # imports: symbol name -> path to implementing library
         self.imports = collections.OrderedDict()
+        self.local_functions = set()
 
+        # exports_plt: plt address -> implementing address
         self.exports_plt = collections.OrderedDict()
+        # imports_plt: plt address -> symbol name
         self.imports_plt = collections.OrderedDict()
 
+        # needed_libs: name from DT_NEEDED -> path of library
         self.needed_libs = collections.OrderedDict()
         self.all_imported_libs = collections.OrderedDict()
         self.rpaths = []
         self.runpaths = []
         self.soname = None
 
-        self.ranges = collections.defaultdict(list)
+        self.ranges = set()
         self.external_calls = {}
         self.internal_calls = {}
+        self.local_calls = {}
 
         if parse:
             self.parse_functions()
@@ -117,9 +133,11 @@ class Library:
                 self.function_addrs.add(start)
                 if symbol_bind != 'STB_LOCAL':
                     name = self._get_versioned_name(symbol, idx)
-                    self.exports[name] = set()
+                    self.export_users[start] = set()
+                    self.exported_names[name] = start
+                    self.exported_addrs[start].append(name)
                     size = symbol['st_size']
-                    self.ranges[name].append((start, size))
+                    self.ranges.add((start, size))
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -143,7 +161,7 @@ class Library:
                 # PIE
                 if tag.entry.d_val & 0x8000000:
                     logging.info('\'%s\' is PIE', self.fullname)
-                    self.function_addrs.add(self.elfheader['e_entry'])
+                    self.entrypoint = self.elfheader['e_entry']
 
     def parse_plt(self):
         if self.elfheader['e_machine'] == 'EM_386':
@@ -178,7 +196,7 @@ class Library:
                         self._get_versioned_name(symbol, symbol_index)
                 else:
                     self.exports_plt[plt_addr] = \
-                        self._get_versioned_name(symbol, symbol_index)
+                        self._get_symbol_offset(symbol)
         else:
             logging.debug('missing sections (.rel{a}.plt, .plt., .dynsym) for %s',
                           self.fullname)
@@ -244,13 +262,12 @@ class Library:
             if got_entry in dynrel_relocs:
                 symbol_index = dynrel_relocs[got_entry]
                 symbol = dynsym.get_symbol(symbol_index)
-#                    print('Found {} - {}'.format(hex(cur_entry), symbol.name))
                 if symbol['st_shndx'] == 'SHN_UNDEF':
                     self.imports_plt[cur_entry] = \
                         self._get_versioned_name(symbol, symbol_index)
                 else:
                     self.exports_plt[cur_entry] = \
-                        self._get_versioned_name(symbol, symbol_index)
+                        self._get_symbol_offset(symbol)
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
@@ -282,15 +299,58 @@ class Library:
                 # indicate the symbol in question should be treated as hidden.
                 self._version_names[idx] = idx_to_names[version_idx & 0x7fff]
 
+    def parse_symtab(self):
+        external_elf = None
+        symtab = self._elffile.get_section_by_name('.symtab')
+        if not symtab:
+            id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
+            if not id_section:
+                return
+
+            for note in id_section.iter_notes():
+                if note['n_type'] != 'NT_GNU_BUILD_ID':
+                    continue
+                build_id = note['n_desc']
+                path = os.path.join(DEBUG_DIR, build_id[:2], build_id[2:] + '.debug')
+                if not os.path.isfile(path):
+                    continue
+                try:
+                    external_elf = ELFFile(open(path, 'rb'))
+                    symtab = external_elf.get_section_by_name('.symtab')
+                    logging.debug('Found external symtab for %s at %s',
+                                self.fullname, path)
+                    break
+                except (ELFError, OSError) as err:
+                    logging.debug('Failed to open external symbol table for %s at %s: %s',
+                                self.fullname, path, err)
+                    continue
+
+        if not symtab:
+            return
+
+        for _, symbol in self._get_function_symbols(symtab):
+            shndx = symbol['st_shndx']
+            if shndx != 'SHN_UNDEF':
+                self.function_addrs.add(self._get_symbol_offset(symbol))
+            if symbol['st_info']['bind'] == 'STB_LOCAL':
+                start = self._get_symbol_offset(symbol)
+                size = symbol['st_size']
+                self.ranges.add((start, size))
+                self.local_functions.add(start)
+
+        if external_elf:
+            external_elf.stream.close()
+            del external_elf
 
     def parse_functions(self, release=False):
         self.parse_versions()
-        self.parse_dynsym()
         self.parse_dynamic()
+        self.parse_dynsym()
         self.parse_plt()
         self.parse_plt_got()
-        self.gather_hookable_addresses_from_symtab()
-        self.get_function_ranges()
+        self.parse_symtab()
+        if self.entrypoint:
+            self.function_addrs.add(self.entrypoint)
         if release:
             self._release_elffile()
 
@@ -305,48 +365,43 @@ class Library:
         return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
             hdr['e_machine'] == o_hdr['e_machine']
 
-    def add_export_user(self, name, user_path):
-        if name not in self.exports:
-            # If the name can not be found, try to identify the corresponding
-            # function without the version string attached
-            possible_versioned_symbols = [symbol for symbol in self.exports
-                                          if symbol.split('@@')[0] == name]
-            # If there is one, use it, otherwise it's either not unique or
-            # the corresponding symbol isn't there.
-            if len(possible_versioned_symbols) == 1:
-                name = possible_versioned_symbols[0]
-            else:
-                logging.error('%s not found in %s (user would be %s)', name,
-                              self.fullname, user_path)
-                return False
-        if user_path not in self.exports[name]:
-            self.exports[name].add(user_path)
+    def add_export_user(self, addr, user_path):
+        if addr not in self.export_users and addr in self.local_functions:
+            logging.debug('%s: adding user to local function %x: %s',
+                          self.fullname, addr, user_path)
+            return False
+        if addr not in self.export_users:
+            logging.error('%s not found in %s (user would be %s)', addr,
+                          self.fullname, user_path)
+            return False
+        if user_path not in self.export_users[addr]:
+            self.export_users[addr].add(user_path)
             return True
         return False
+
+    def get_users_by_name(self, name):
+        addr = self.find_export(name)
+        if not addr:
+            return []
+        return self.export_users.get(addr, [])
+
+    def find_export(self, requested_name):
+        if requested_name in self.exported_names:
+            return self.exported_names[requested_name]
+        for name, addr in self.exported_names.items():
+            if name.split('@@')[0] == requested_name:
+                return addr
+        return None
 
     def get_function_ranges(self):
         return self.ranges
 
-    def gather_hookable_addresses_from_symtab(self):
-        if self.elfheader['e_type'] == 'ET_EXEC':
-            self.function_addrs.add(self.elfheader['e_entry'] - \
-                                    self.load_offset)
-
-        symtab = self._elffile.get_section_by_name('.symtab')
-        if not symtab:
-            return
-
-        for _, symbol in self._get_function_symbols(symtab):
-            shndx = symbol['st_shndx']
-            if shndx != 'SHN_UNDEF':
-                self.function_addrs.add(self._get_symbol_offset(symbol))
-
     def summary(self):
         return '{}: {} imports, {} exports, {} needed libs, ' \
                    '{} rpaths, {} runpaths' \
-                   .format(self.fullname, len(self.imports), len(self.exports),
-                           len(self.needed_libs), len(self.rpaths),
-                           len(self.runpaths))
+                   .format(self.fullname, len(self.imports),
+                           len(self.exported_names), len(self.needed_libs),
+                           len(self.rpaths), len(self.runpaths))
 
     def __str__(self):
         return self.summary()

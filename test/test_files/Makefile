@@ -24,11 +24,9 @@ user_pie: user.c libmock.so
 
 libmock.so: mock.c
 	$(CC) $(CFLAGS) -o $@ $^
-	strip -s $@
 
 libmock_plt.so: mock.c
 	$(CC) $(SHARED_FLAGS) -o $@ $<
-	strip -s $@
 
 librpath_one.so: rpath_one.c $(RPATH_DIR)/librpath_two.so
 	$(CC) $(CFLAGS) -Wl,-rpath='$$ORIGIN/$(RPATH_DIR):$$ORIGIN/$(RPATH_SUBDIR)' \

@@ -161,7 +161,7 @@ class Runner():
 
         for lib in libobjs:
             result[lib.fullname] = {}
-            for function, users in lib.exports.items():
+            for function, users in lib.export_users.items():
                 result[lib.fullname][function] = users
 
         return result
@@ -178,11 +178,18 @@ class Runner():
     def _mark_extra_functions_as_used(self):
         with open(self.args.used_functions, 'r') as infd:
             for line in infd:
-                library, function = line.strip().split(':')
-                if not os.path.isfile(library):
+                path, function = line.strip().split(':')
+                if not os.path.isfile(path):
                     continue
-                self.store.get_from_path(library).add_export_user(function,
-                                                                  'EXTERNAL')
+                library = self.store.get_from_path(path)
+                if not library:
+                    continue
+                addr = library.find_export(function)
+                if addr is None:
+                    logging.warning('mark_extra: %s not found in %s', function,
+                                    library.fullname)
+                    continue
+                library.add_export_user(addr, 'EXTERNAL')
 
     def _propagate_users_through_calls(self):
         self.get_all_resolved_functions()
@@ -235,9 +242,9 @@ class Runner():
                 if do_print:
                     print('-- {}: {}: {}'.format(function, len(importers),
                                                  importers))
-            if self.store[lib].exports and ".so" in lib:
+            if self.store[lib].exported_addrs and ".so" in lib:
                 pctg = len(list(x for (x, y) in functions.items() if y)) \
-                       / len(self.store[lib].exports)
+                       / len(self.store[lib].exported_addrs)
                 ipctg = int(pctg * 100)
                 if 'libc-2.2' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
                     print(ipctg, pctg, len(list(x for (x, y) in functions.items() if y)), lib)
@@ -257,7 +264,7 @@ class Runner():
         histo_out = collections.defaultdict(int)
         for lib in libobjs:
             num_imports = len(list(lib.imports.keys()))
-            num_exports = len(list(lib.exports.keys()))
+            num_exports = len(list(lib.exported_addrs.keys()))
             histo_in[num_imports] += 1
             histo_out[num_exports] += 1
 #            if num_exports > 20000:
@@ -268,9 +275,9 @@ class Runner():
         print('Most called functions (directly and transitively):')
         res = []
         for library in libobjs:
-            for function, callers in library.exports.items():
+            for function, callers in library.export_users.items():
                 count = len(callers)
-                res.append(('{}:{}'.format(library.fullname, function), count))
+                res.append(('{}:{}'.format(library.fullname, library.exported_addrs[function]), count))
 
         sorted_callees = list(sorted(res, key=lambda x: x[1], reverse=True))
         for name, count in sorted_callees[:10]:
@@ -303,13 +310,13 @@ class Runner():
                 outfd.write('{},{}\n'.format(key, value))
 
         print('Top 10 exporters:')
-        top_exporters = list(sorted(libobjs, key=lambda x: len(list(x.exports)), reverse=True))
+        top_exporters = list(sorted(libobjs, key=lambda x: len(list(x.exported_addrs)), reverse=True))
         for library in top_exporters[:10]:
-            print('{}: {}'.format(library.fullname, len(list(library.exports))))
+            print('{}: {}'.format(library.fullname, len(list(library.exported_addrs))))
 
         with open('{}_number_of_exports.csv'.format(self.args.store), 'w') as outfd:
             for library in top_exporters:
-                outfd.write('{},{}\n'.format(library.fullname, len(list(library.exports))))
+                outfd.write('{},{}\n'.format(library.fullname, len(list(library.exported_addrs))))
 
         with open('{}_exports_histo.csv'.format(self.args.store), 'w') as outfd:
             for key, value in sorted(histo_out.items()):

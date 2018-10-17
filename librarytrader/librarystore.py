@@ -222,17 +222,20 @@ class LibraryStore(BaseStore):
         # No cache hit, calculate it
         local_cache = set()
 
-        if function in library.internal_calls:
-            working_on.add(function)
-            for callee in library.internal_calls[function]:
-                local_cache.add((callee, library))
-                if callee in working_on:
-                    continue
-                subcalls = self.get_transitive_calls(library, callee, cache,
-                                                     working_on)
-                local_cache.update(subcalls)
-            working_on.remove(function)
+        # Work on calls to exported and local functions...
+        for calls in (library.internal_calls, library.local_calls):
+            if function in calls:
+                working_on.add(function)
+                for callee in calls[function]:
+                    local_cache.add((callee, library))
+                    if callee in working_on:
+                        continue
+                    subcalls = self.get_transitive_calls(library, callee, cache,
+                                                         working_on)
+                    local_cache.update(subcalls)
+                working_on.remove(function)
 
+        # ... and add calls to imported functions last
         if function in library.external_calls:
             for callee in library.external_calls[function]:
                 if callee in library.imports:
@@ -244,7 +247,8 @@ class LibraryStore(BaseStore):
                     logging.warning('%s: call to unknown target for function %s',
                                     libname, callee)
                     continue
-                local_cache.add((callee, target_lib))
+                callee_addr = target_lib.find_export(callee)
+                local_cache.add((callee_addr, target_lib))
 
         cache[libname][function] = local_cache
         return cache[libname][function]
@@ -257,12 +261,14 @@ class LibraryStore(BaseStore):
                                 needed_name, library.fullname)
                 continue
 
-            exported_functions = imp_lib.exports
+            exported_functions = imp_lib.exported_names
             if map_func:
-                exported_functions = [map_func(x) for x in imp_lib.exports]
+                exported_functions = {map_func(key): val for key, val in
+                                      imp_lib.exported_names.items()}
             if function in exported_functions:
                 library.imports[function] = needed_path
-                imp_lib.add_export_user(function, library.fullname)
+                addr = exported_functions[function]
+                imp_lib.add_export_user(addr, library.fullname)
 
                 logging.debug('|- found \'%s\' in %s', function, needed_path)
                 return True
@@ -317,11 +323,11 @@ class LibraryStore(BaseStore):
                           len(lib_worklist))
             # Starting points are all referenced exports
             worklist = collections.deque(function for function, users
-                                         in lib.exports.items() if users)
+                                         in lib.export_users.items() if users)
             while worklist:
                 # Take one function and get its current users
                 cur = worklist.popleft()
-                users = lib.exports[cur]
+                users = lib.export_users[cur]
                 # Add users to transitively called functions
                 for (trans_callee, called_lib) in self.get_transitive_calls(lib, cur):
                     # Draw direct reference
@@ -352,7 +358,9 @@ class LibraryStore(BaseStore):
                 def dump_dict_with_set_value(target_dict, library, name):
                     res = {}
                     for key, value in getattr(library, name).items():
-                        res[key] = list(value)
+                        if not value:
+                            continue
+                        res[key] = list(sorted(value))
                     target_dict[name] = res
                 def dump_ordered_dict_as_list(target_dict, library, name):
                     res = []
@@ -361,16 +369,20 @@ class LibraryStore(BaseStore):
                     target_dict[name] = res
 
                 lib_dict["type"] = "library"
+                lib_dict["entrypoint"] = content.entrypoint
                 lib_dict["imports"] = content.imports
-                dump_dict_with_set_value(lib_dict, content, "exports")
-                lib_dict["function_addrs"] = list(content.function_addrs)
+                dump_ordered_dict_as_list(lib_dict, content, "exported_names")
+                dump_dict_with_set_value(lib_dict, content, "export_users")
+                lib_dict["function_addrs"] = list(sorted(content.function_addrs))
                 dump_ordered_dict_as_list(lib_dict, content, "imports_plt")
                 dump_ordered_dict_as_list(lib_dict, content, "exports_plt")
+                lib_dict["local_functions"] = list(content.local_functions)
                 dump_ordered_dict_as_list(lib_dict, content, "needed_libs")
                 dump_ordered_dict_as_list(lib_dict, content, "all_imported_libs")
                 lib_dict["rpaths"] = content.rpaths
                 dump_dict_with_set_value(lib_dict, content, "internal_calls")
                 dump_dict_with_set_value(lib_dict, content, "external_calls")
+                dump_dict_with_set_value(lib_dict, content, "local_calls")
 
             output[path] = lib_dict
 
@@ -389,24 +401,35 @@ class LibraryStore(BaseStore):
                     self._add_library(path, content["target"])
                 else:
                     library = Library(path, load_elffile=False)
-                    def load_dict_with_set_values(from_dict, library, name):
-                        for key, value in from_dict[library.fullname][name].items():
+                    def load_dict_with_set_values(from_dict, library, name, convert_key=None):
+                        for key, value in from_dict[name].items():
+                            key = convert_key(key) if convert_key else key
                             getattr(library, name)[key] = set(value)
                     def load_ordered_dict_from_list(from_dict, library, name):
                         # Recreate order from list
-                        for key, value in from_dict[library.fullname][name]:
+                        for key, value in from_dict[name]:
                             getattr(library, name)[key] = value
 
+                    library.entrypoint = content["entrypoint"]
                     library.imports = content["imports"]
-                    load_dict_with_set_values(in_dict, library, "exports")
+                    load_ordered_dict_from_list(content, library, "exported_names")
+                    library.exported_addrs = collections.defaultdict(list)
+                    for name, addr in library.exported_names.items():
+                        library.exported_addrs[addr].append(name)
+                    load_dict_with_set_values(content, library, "export_users", int)
+                    for key in library.exported_addrs.keys():
+                        if key not in library.export_users:
+                            library.export_users[key] = set()
                     library.function_addrs = set(content["function_addrs"])
-                    load_ordered_dict_from_list(in_dict, library, "imports_plt")
-                    load_ordered_dict_from_list(in_dict, library, "exports_plt")
-                    load_ordered_dict_from_list(in_dict, library, "needed_libs")
-                    load_ordered_dict_from_list(in_dict, library, "all_imported_libs")
+                    load_ordered_dict_from_list(content, library, "imports_plt")
+                    load_ordered_dict_from_list(content, library, "exports_plt")
+                    library.local_functions = set(content["local_functions"])
+                    load_ordered_dict_from_list(content, library, "needed_libs")
+                    load_ordered_dict_from_list(content, library, "all_imported_libs")
                     library.rpaths = content["rpaths"]
-                    load_dict_with_set_values(in_dict, library, "internal_calls")
-                    load_dict_with_set_values(in_dict, library, "external_calls")
+                    load_dict_with_set_values(content, library, "internal_calls", int)
+                    load_dict_with_set_values(content, library, "external_calls", int)
+                    load_dict_with_set_values(content, library, "local_calls", int)
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     self._add_library(path, library)
 

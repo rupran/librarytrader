@@ -39,7 +39,7 @@ CALL_REGEX = re.compile(r'^call[q]?\s+([0-9a-f]+).*$')
 JMP_REGEX = re.compile(r'^jmp[q]?\s+([0-9a-f]+).*$')
 JNE_REGEX = re.compile(r'^j[n]?e\s+([0-9a-f]+).*$')
 
-def disassemble_objdump(library, start, length):
+def disassemble_objdump(library, start, length, obj=None):
     disassembly = []
     if length == 0:
         return (disassembly, find_calls_from_objdump)
@@ -66,9 +66,10 @@ def disassemble_objdump(library, start, length):
 
     return (disassembly, find_calls_from_objdump)
 
-def find_calls_from_objdump(library, disas, symbols):
-    local_calls = set()
-    import_calls = set()
+def find_calls_from_objdump(library, disas):
+    calls_to_exports = set()
+    calls_to_imports = set()
+    calls_to_locals = set()
 
     for _, decoded in disas:
         match = CALL_REGEX.match(decoded)
@@ -81,16 +82,18 @@ def find_calls_from_objdump(library, disas, symbols):
             # Symbols are offsets into the file, so we need to subtract the
             # load_offset from the call target again to properly match it
             target = int(match.group(1), 16) - library.load_offset
-            if target in symbols:
-                local_calls.add(symbols[target])
+            if target in library.exported_addrs:
+                calls_to_exports.add(target)
             elif target in library.exports_plt:
-                local_calls.add(library.exports_plt[target])
+                calls_to_exports.add(library.exports_plt[target])
             elif target in library.imports_plt:
-                import_calls.add(library.imports_plt[target])
+                calls_to_imports.add(library.imports_plt[target])
+            elif target in library.local_functions:
+                calls_to_locals.add(target)
 
-    return (local_calls, import_calls)
+    return (calls_to_exports, calls_to_imports, calls_to_locals)
 
-def disassemble_capstone(library, start, length):
+def disassemble_capstone(library, start, length, cs_obj):
     disassembly = []
     if length == 0:
         return (disassembly, find_calls_from_capstone)
@@ -99,12 +102,6 @@ def disassemble_capstone(library, start, length):
     library.fd.seek(start)
     code = library.fd.read(length)
 
-    # Disassemble with the right machine type
-    arch = capstone.CS_MODE_64
-    if library.elfheader['e_machine'] == 'EM_386':
-        arch = capstone.CS_MODE_32
-    cs_obj = capstone.Cs(capstone.CS_ARCH_X86, arch)
-    cs_obj.detail = True
     disas = list(cs_obj.disasm(code, start))
 
     # If capstone didn't disassemble everything, try objdump instead
@@ -116,9 +113,10 @@ def disassemble_capstone(library, start, length):
 
     return (disas, find_calls_from_capstone)
 
-def find_calls_from_capstone(library, disas, symbols):
-    local_calls = set()
-    import_calls = set()
+def find_calls_from_capstone(library, disas):
+    calls_to_exports = set()
+    calls_to_imports = set()
+    calls_to_locals = set()
     for instr in disas:
         if instr.group(capstone.x86_const.X86_GRP_CALL) \
                 or instr.group(capstone.x86_const.X86_GRP_JUMP):
@@ -126,46 +124,48 @@ def find_calls_from_capstone(library, disas, symbols):
                 target = int(instr.op_str, 16)
             except ValueError:
                 continue
-            if target in symbols:
-                local_calls.add(symbols[target])
+            if target in library.exported_addrs:
+                calls_to_exports.add(target)
             elif target in library.exports_plt:
-                local_calls.add(library.exports_plt[target])
+                calls_to_exports.add(library.exports_plt[target])
             elif target in library.imports_plt:
-                import_calls.add(library.imports_plt[target])
+                calls_to_imports.add(library.imports_plt[target])
+            elif target in library.local_functions:
+                calls_to_locals.add(target)
 
-    return (local_calls, import_calls)
+    return (calls_to_exports, calls_to_imports, calls_to_locals)
 
 def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     logging.debug('Processing %s', library.fullname)
     before = time.time()
     internal_calls = defaultdict(set)
     external_calls = defaultdict(set)
+    local_calls = defaultdict(set)
     ranges = library.get_function_ranges()
-    symbols = {}
 
-    for name, val in sorted(ranges.items()):
-        for start, size in val:
-            # TODO: addresses do not need to be unique, hidden symbols
-            # (libasound, {__,}snd_pcm_hw_params_get_periods have same address
-            # with different versions (ALSA_0.9 vs. ALSA_0.9.0rc4)
-            # => sorted by name by now, use last reference
-            symbols[start] = name
+    # Disassemble with the right machine type
+    arch = capstone.CS_MODE_64
+    if library.elfheader['e_machine'] == 'EM_386':
+        arch = capstone.CS_MODE_32
+    cs_obj = capstone.Cs(capstone.CS_ARCH_X86, arch)
+    cs_obj.detail = True
 
-    for name, cur_range in ranges.items():
-        for start, size in cur_range:
-            disas, resolution_function = disas_function(library, start, size)
-            local_calls, import_calls = resolution_function(library, disas, symbols)
-            if local_calls:
-                internal_calls[name] = local_calls
-            if import_calls:
-                external_calls[name] = import_calls
+    for start, size in ranges:
+        disas, resolution_function = disas_function(library, start, size, cs_obj)
+        calls_to_exports, calls_to_imports, calls_to_locals = resolution_function(library, disas)
+        if calls_to_exports:
+            internal_calls[start] = calls_to_exports
+        if calls_to_imports:
+            external_calls[start] = calls_to_imports
+        if calls_to_locals:
+            local_calls[start] = calls_to_locals
 
     after = time.time()
     duration = after - before
     logging.info('Thread %d: %s took %.3f s', os.getpid(),
                                               library.fullname,
                                               duration)
-    return (internal_calls, external_calls, (after - before))
+    return (internal_calls, external_calls, local_calls, (after - before))
 
 def map_wrapper(path):
     try:
@@ -173,23 +173,27 @@ def map_wrapper(path):
     except (OSError, ELFError) as err:
         logging.error('%s: %s', path, err)
         return (None, None, None, 0)
-    internal_calls, external_calls, duration = resolve_calls_in_library(lib)
-    return (lib.fullname, internal_calls, external_calls, duration)
+    internal_calls, external_calls, local_calls, duration = resolve_calls_in_library(lib)
+    return (lib.fullname, internal_calls, external_calls, local_calls, duration)
 
 def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     libs = [lib.fullname for lib in sorted(store.get_library_objects(),
-                                           key=lambda x: -len(x.exports))]
+                                           key=lambda x: -len(x.exported_addrs))]
     logging.info('Searching for calls in %d libraries...', len(libs))
     pool = multiprocessing.Pool(n_procs)
     result = pool.map(map_wrapper, libs, chunksize=1)
     pool.close()
 
-    for fullname, internal_calls, external_calls, _ in result:
+    for fullname, internal_calls, external_calls, local_calls, _ in result:
         store[fullname].internal_calls = internal_calls
         store[fullname].external_calls = external_calls
+        store[fullname].local_calls = local_calls
 
     logging.info('... done!')
-    longest = [(v[0], v[3]) for v in sorted(result, key=lambda x: -x[3])]
+    longest = [(v[0], v[4]) for v in sorted(result, key=lambda x: -x[4])]
     logging.info(longest[:20])
-    logging.info('total number of calls: %d', sum(len(v[2].values()) + len(v[1].values()) for v in result))
+    logging.info('total number of calls: %d', sum(len(v[3].values()) +
+                                                  len(v[2].values()) +
+                                                  len(v[1].values())
+                                                  for v in result))
     return result

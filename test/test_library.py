@@ -51,6 +51,12 @@ class TestLibrary(unittest.TestCase):
         store.resolve_libs_single_by_path(os.path.abspath(FILE_PATH + 'Makefile'))
         self.assertEquals(len(store.items()), 0)
 
+    def test_0_find_export(self):
+        libc = Library(os.path.abspath(TEST_LIBC), parse=True)
+        versioned_addr = libc.find_export('malloc@@GLIBC_2.2.5')
+        unversioned_addr = libc.find_export('malloc')
+        self.assertEquals(versioned_addr, unversioned_addr)
+
     def test_0_resolve_libs_single(self):
         store, lib = create_store_and_lib()
 
@@ -132,7 +138,7 @@ class TestLibrary(unittest.TestCase):
         # ... two of them are links
 
     def test_2_resolution_with_rpaths_and_runpaths(self):
-        store, one = create_store_and_lib(TEST_RPATH, parse=True,
+        store, one = create_store_and_lib(TEST_RPATH, parse=False,
                                           resolve_libs_recursive=True)
 
         # librpath_one.so has RPATH for rpath_dir/ and rpath_dir/rpath_subdir
@@ -209,11 +215,20 @@ class TestLibrary(unittest.TestCase):
                    'recursive_helper': set(['recursive', 'external'])
                    }
 
+    def _convert_numeric_dict(self, lib, num_dict):
+        text_dict = {}
+        for caller, callees in num_dict.items():
+            text_key = lib.exported_addrs[caller][0]
+            text_value = set(lib.exported_addrs[c][0] for c in callees)
+            text_dict[text_key] = text_value
+        return text_dict
+
     def test_4_resolve_calls_by_capstone(self):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
@@ -222,7 +237,8 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
@@ -231,7 +247,8 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
         self.assertEquals(len(calls), 4)
@@ -241,7 +258,8 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
         self.assertEquals(len(calls), 4)
@@ -253,69 +271,70 @@ class TestLibrary(unittest.TestCase):
         result = resolve_calls(store)
         # calls for mock.so, libc-2.23.so and ld-2.23.so
         self.assertEqual(len(result), 3)
-        self.assertDictEqual(dict(store[lib.fullname].internal_calls),
+        call_result = self._convert_numeric_dict(lib, lib.internal_calls)
+        self.assertDictEqual(call_result,
                              self.call_result)
 
     def test_5_transitive_calls(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True,
                                           call_resolve=True)
 
-        result = store.get_transitive_calls(lib, 'second_level_caller')
+        result = store.get_transitive_calls(lib, lib.exported_names['second_level_caller'])
         # Check that transitive callees are returned
-        self.assertSetEqual(result, set([('external_caller', lib),
-                                         ('external', lib)]))
+        self.assertSetEqual(result, set([(lib.exported_names['external_caller'], lib),
+                                         (lib.exported_names['external'], lib)]))
 
         # Check that functions calling themselves recursively work and cover
         # the use of the cache (external is called from recursive and its
         # recursive_helper function)
-        result = store.get_transitive_calls(lib, 'recursive')
-        self.assertSetEqual(result, set([('external', lib),
-                                         ('recursive_helper', lib),
-                                         ('recursive', lib)]))
+        result = store.get_transitive_calls(lib, lib.exported_names['recursive'])
+        self.assertSetEqual(result, set([(lib.exported_names['external'], lib),
+                                         (lib.exported_names['recursive_helper'], lib),
+                                         (lib.exported_names['recursive'], lib)]))
 
         # Check transitive calls into other libraries
         store.resolve_functions(lib)
-        result = store.get_transitive_calls(lib, 'ref_internal')
-        self.assertIn(('malloc@@GLIBC_2.2.5',
-                       store.get_from_path(lib.needed_libs['libc.so.6'])), result)
+        result = store.get_transitive_calls(lib, lib.exported_names['ref_internal'])
+        libc = store.get_from_path(lib.needed_libs['libc.so.6'])
+        self.assertIn((libc.exported_names['malloc@@GLIBC_2.2.5'], libc),
+                      result)
 
     def test_6_propagate_calls_all_entries(self):
         store, binary = create_store_and_lib(TEST_BINARY,
                                              resolve_libs_recursive=True,
                                              call_resolve=True)
-        lib = Library(os.path.abspath(TEST_LIBRARY))
+        libpath = os.path.abspath(TEST_LIBRARY)
         not_imported = Library(os.path.abspath(TEST_EXECONLY))
         store.resolve_libs_recursive(not_imported)
 
         store.resolve_all_functions(all_entries=True)
         store.propagate_call_usage(all_entries=True)
         # Check if all transitively called functions have the binary as their user
-        self.assertIn(binary.fullname, store[lib.fullname].exports['external'])
-        self.assertIn(binary.fullname, store[lib.fullname].exports['external_caller'])
-        self.assertIn(binary.fullname, store[lib.fullname].exports['second_level_caller'])
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('external'))
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('external_caller'))
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('second_level_caller'))
         # If we use all libraries in the store as entry points for the
         # resolution, TEST_EXECONLY should show up as a user of 'external' in
         # TEST_LIBRARY
-        self.assertIn(not_imported.fullname, store[lib.fullname].exports['external'])
+        self.assertIn(not_imported.fullname, store[libpath].get_users_by_name('external'))
 
     def test_6_propagate_calls_exec_only(self):
         store, binary = create_store_and_lib(TEST_BINARY,
                                              resolve_libs_recursive=True,
                                              call_resolve=True)
-        lib = Library(os.path.abspath(TEST_LIBRARY))
+        libpath = os.path.abspath(TEST_LIBRARY)
         not_imported = Library(os.path.abspath(TEST_EXECONLY))
         store.resolve_libs_recursive(not_imported)
 
         store.resolve_all_functions(all_entries=False)
         store.propagate_call_usage(all_entries=False)
         # Check if all transitively called functions have the binary as their user
-        self.assertIn(binary.fullname, store[lib.fullname].exports['external'])
-        self.assertIn(binary.fullname, store[lib.fullname].exports['external_caller'])
-        self.assertIn(binary.fullname, store[lib.fullname].exports['second_level_caller'])
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('external'))
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('external_caller'))
+        self.assertIn(binary.fullname, store[libpath].get_users_by_name('second_level_caller'))
         # In this case, the library not imported from TEST_BINARY should not
         # show up as a user of TEST_LIBRARY
-        self.assertNotIn(not_imported.fullname, store[lib.fullname].exports['external'])
-
+        self.assertNotIn(not_imported.fullname, store[libpath].get_users_by_name('external'))
 
     def test_7_store_load(self):
         store, binary = create_store_and_lib(TEST_BINARY,
@@ -347,13 +366,11 @@ class TestLibrary(unittest.TestCase):
         self.assertIn(lib.fullname,
                       new_store[binary.fullname].needed_libs.values())
 
+        lib = new_store[lib.fullname]
         # Assert restoration of calls
-        self.assertIn(binary.fullname,
-                      new_store[lib.fullname].exports['external'])
-        self.assertIn(binary.fullname,
-                      new_store[lib.fullname].exports['external_caller'])
-        self.assertIn(binary.fullname,
-                      new_store[lib.fullname].exports['second_level_caller'])
+        self.assertIn(binary.fullname, lib.get_users_by_name('external'))
+        self.assertIn(binary.fullname, lib.get_users_by_name('external_caller'))
+        self.assertIn(binary.fullname, lib.get_users_by_name('second_level_caller'))
 
 if __name__ == '__main__':
     unittest.main()
