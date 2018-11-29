@@ -3,10 +3,12 @@ SHARED_FLAGS=-shared -fPIC -O3
 CFLAGS=$(SHARED_FLAGS) -Wl,-Bsymbolic-functions
 RPATH_DIR=rpath_dir
 RPATH_SUBDIR=$(RPATH_DIR)/rpath_subdir
+LOADERDIR=loaderlike
 TARGETS=user libmock.so libmock_plt.so librpath_one.so \
 	$(RPATH_DIR)/librpath_two.so $(RPATH_SUBDIR)/librpath_three.so \
 	$(RPATH_SUBDIR)/librunpath.so $(RPATH_DIR)/libldd_search.so \
-	libnoldconfig.so libnot_imported.so
+	libnoldconfig.so libnot_imported.so \
+	$(addprefix $(LOADERDIR)/, bin bin1a bin2 lib1a.so lib1.so lib2.so lib3.so)
 
 .PHONY: all clean
 
@@ -51,6 +53,27 @@ libnoldconfig.so: noldconfig.c
 
 libnot_imported.so: not_imported.c libmock.so
 	$(CC) $(CFLAGS) -o $@ $< -L. -lmock
+
+$(LOADERDIR)/lib3.so: $(LOADERDIR)/lib3.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(LOADERDIR)/lib2.so: $(LOADERDIR)/lib2.c $(LOADERDIR)/lib3.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l3
+
+$(LOADERDIR)/lib1.so: $(LOADERDIR)/lib1.c $(LOADERDIR)/lib2.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l2
+
+$(LOADERDIR)/bin: $(LOADERDIR)/bin.c $(LOADERDIR)/lib1.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l1
+
+$(LOADERDIR)/bin2: $(LOADERDIR)/bin2.c $(LOADERDIR)/lib1.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l1
+
+$(LOADERDIR)/lib1a.so: $(LOADERDIR)/lib1a.c $(LOADERDIR)/lib2.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l2
+
+$(LOADERDIR)/bin1a: $(LOADERDIR)/bin1a.c $(LOADERDIR)/lib1a.so
+	$(CC) $(CFLAGS) -o $@ $< -L$(LOADERDIR) -l1a
 
 clean:
 	rm -f $(TARGETS)

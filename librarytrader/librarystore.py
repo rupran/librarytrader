@@ -253,7 +253,7 @@ class LibraryStore(BaseStore):
         cache[libname][function] = local_cache
         return cache[libname][function]
 
-    def _find_imported_function(self, function, library, map_func=None):
+    def _find_imported_function(self, function, library, map_func=None, users=None, add=True):
         for needed_name, needed_path in library.all_imported_libs.items():
             imp_lib = self.get_from_path(needed_path)
             if not imp_lib:
@@ -267,8 +267,11 @@ class LibraryStore(BaseStore):
                                       imp_lib.exported_names.items()}
             if function in exported_functions:
                 library.imports[function] = needed_path
-                addr = exported_functions[function]
-                imp_lib.add_export_user(addr, library.fullname)
+                if add:
+                    addr = exported_functions[function]
+                    imp_lib.add_export_user(addr, library.fullname)
+                    if users is not None:
+                        users[(imp_lib.fullname, addr)].add(library.fullname)
 
                 logging.debug('|- found \'%s\' in %s', function, needed_path)
                 return True
@@ -301,6 +304,95 @@ class LibraryStore(BaseStore):
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 
+    def resolve_functions_loaderlike(self, library):
+        users = collections.defaultdict(set)
+
+        if isinstance(library, str):
+            name = library
+            library = self.get_from_path(library)
+            if library is None:
+                logging.error('Did not find library \'%s\'', name)
+                return users, False
+
+        logging.debug('Resolving functions from %s (loader-like)', library.fullname)
+
+        for addr, export_users in library.export_users.items():
+            if 'EXTERNAL' in export_users:
+                users[(library.fullname, addr)].add('EXTERNAL')
+
+        already_defined = {}
+        for name, addr in library.exported_names.items():
+            already_defined[name] = (library.fullname, addr, library.export_bind[name])
+            # TODO: here we mark all exported names of entrypoints as used even
+            # if only one specific function was used (and already marked as
+            # EXTERNAL) -> maybe we should check that as well
+            library.export_users[addr].add('TOPLEVEL')
+            users[(library.fullname, addr)].add('TOPLEVEL')
+
+        overload = False
+
+        worklist = collections.deque()
+        worklist.append((library.fullname, library.fullname))
+        worklist.extend(library.all_imported_libs.items())
+        while worklist:
+            cur_name, cur_path = worklist.popleft()
+            logging.debug('... working on %s', cur_path)
+            cur_lib = self.get_from_path(cur_path)
+            toplevel = cur_lib == library
+            for imp_name in cur_lib.imports:
+                # FIXME: real behaviour with versions?
+                # Crossreferencing here only makes sense for single binaries
+                # as starting points, doesn't it?
+                found = False
+                for name in (imp_name, imp_name.split('@@')[0]):
+                    if name in already_defined:
+                        logging.debug('in %s: %s already defined from %s',
+                                      cur_name, name, already_defined[name])
+                        def_lib_path, addr, bind = already_defined[name]
+                        cur_lib.imports[imp_name] = def_lib_path
+                        found = True
+                        overload = True
+                        break
+
+                if not found:
+                    found = self._find_imported_function(imp_name, cur_lib,
+                                                         users=users, add=toplevel)
+                if not found:
+                    found = self._find_imported_function(imp_name, cur_lib,
+                                                         map_func=lambda x: x.split('@@')[0],
+                                                         users=users, add=toplevel)
+                if not found:
+                    logging.info('absolutely no match for %s:%s:%s (working on %s)',
+                                 cur_name, cur_path, imp_name, library.fullname)
+            for name, addr in cur_lib.exported_names.items():
+                if name not in already_defined:
+                    pass
+                elif already_defined[name][2] == 'STB_WEAK' and \
+                        cur_lib.export_bind[name] != 'STB_WEAK':
+                    logging.debug('previous weak definition override for %s@%x in %s (was in %s)',
+                                  name, addr, cur_lib.fullname,
+                                  already_defined[name][0])
+                    pass
+                else:
+                    continue
+                already_defined[name] = (cur_lib.fullname, addr, cur_lib.export_bind[name])
+
+        return users, overload
+
+    def resolve_all_functions_from_binaries(self):
+        objs = [lib for lib in self.get_executable_objects()
+                if not '.so' in lib.fullname]
+        objs.extend(lib for lib in (self.get_from_path(path) for path
+                                    in self._entrylist) if lib and not lib in objs)
+
+        logging.info('Resolving functions from executables...')
+        for lib in objs:
+            logging.info('... in %s', lib.fullname)
+            users, overload = self.resolve_functions_loaderlike(lib)
+            self.propagate_call_usage(user_dict=users, overload=overload)
+
+        logging.info('... done!')
+
     def resolve_all_functions(self, all_entries=False):
         libobjs = self.get_entry_points(all_entries)
 
@@ -311,37 +403,61 @@ class LibraryStore(BaseStore):
 
         logging.info('... done!')
 
-    def propagate_call_usage(self, all_entries=False):
+    def propagate_call_usage(self, all_entries=False, user_dict=None, overload=False):
         logging.info('Propagating export users through calls...')
-        libobjs = self.get_entry_points(all_entries)
+        if user_dict is not None:
+            lib_worklist = set(lib for lib in (self.get_from_path(path)
+                                               for path, addr in user_dict.keys())
+                               if lib)
+        else:
+            libobjs = self.get_entry_points(all_entries)
+            lib_worklist = set(libobjs)
+            user_dict = collections.defaultdict(set)
+            for lib in lib_worklist:
+                for addr, users in lib.export_users.items():
+                    user_dict[(lib.fullname, addr)] = users.copy()
+                for sublib in [self.get_from_path(x) for _, x in
+                               lib.all_imported_libs.items() if x]:
+                    for addr, users in sublib.export_users.items():
+                        user_dict[(sublib.fullname, addr)] = users.copy()
 
-        lib_worklist = set(libobjs)
+        # Starting points are all referenced exports
+        worklist = set()
+        for (name, addr), user_libs in user_dict.items():
+            if user_libs:
+                worklist.add((self.get_from_path(name), addr))
+
+        logging.debug('initial worklist: %s', str([(l.fullname, a) for l, a in worklist]))
+
         # Propagate usage information inside libraries
-        while lib_worklist:
-            lib = lib_worklist.pop()
-            logging.debug('Propagating in %s, worklist length: %d', lib.fullname,
-                          len(lib_worklist))
-            # Starting points are all referenced exports
-            worklist = collections.deque(function for function, users
-                                         in lib.export_users.items() if users)
-            while worklist:
-                # Take one function and get its current users
-                cur = worklist.popleft()
-                users = lib.export_users[cur]
-                # Add users to transitively called functions
-                for (trans_callee, called_lib) in self.get_transitive_calls(lib, cur):
-                    # Draw direct reference
-                    called_lib.add_export_user(trans_callee, lib.fullname)
-                    if lib != called_lib:
-                        lib_worklist.add(called_lib)
-                    for user in users:
-                        # Add user to callee if not already present
-                        if not called_lib.add_export_user(trans_callee, user):
-                            continue
-                        # Only add to worklist if the callee is in the current
-                        # library and it is not queued already
-                        if called_lib == lib and trans_callee not in worklist:
-                            worklist.append(trans_callee)
+        while worklist:
+            # Take one function and get its current users
+            lib, cur = worklist.pop()
+            users = user_dict.get((lib.fullname, cur), [])
+            logging.debug('Propagating from %s:%x, worklist length: %d',
+                          lib.fullname, cur, len(worklist))
+            # Add users to transitively called functions
+            for (trans_callee, called_lib) in self.get_transitive_calls(lib, cur):
+                # Draw direct reference
+                added = called_lib.add_export_user(trans_callee, lib.fullname)
+                key = (called_lib.fullname, trans_callee)
+                if overload and lib.fullname not in user_dict[key]:
+                    added = True
+                user_dict[key].add(lib.fullname)
+                if added:
+                    worklist.add((called_lib, trans_callee))
+
+                for user in users:
+                    # Add user to callee if not already present
+                    added = called_lib.add_export_user(trans_callee, user)
+                    key = (called_lib.fullname, trans_callee)
+                    if overload and user not in user_dict[key]:
+                        added = True
+                    user_dict[key].add(user)
+                    if not added:
+                        continue
+                    # Only insert callee if users have changed
+                    worklist.add((called_lib, trans_callee))
 
         logging.info('... done!')
 
@@ -372,6 +488,7 @@ class LibraryStore(BaseStore):
                 lib_dict["entrypoint"] = content.entrypoint
                 lib_dict["imports"] = content.imports
                 dump_ordered_dict_as_list(lib_dict, content, "exported_names")
+                lib_dict["export_bind"] = content.export_bind
                 dump_dict_with_set_value(lib_dict, content, "export_users")
                 lib_dict["function_addrs"] = list(sorted(content.function_addrs))
                 dump_ordered_dict_as_list(lib_dict, content, "imports_plt")
@@ -416,6 +533,7 @@ class LibraryStore(BaseStore):
                     library.exported_addrs = collections.defaultdict(list)
                     for name, addr in library.exported_names.items():
                         library.exported_addrs[addr].append(name)
+                    library.export_bind = content["export_bind"]
                     load_dict_with_set_values(content, library, "export_users", int)
                     for key in library.exported_addrs.keys():
                         if key not in library.export_users:

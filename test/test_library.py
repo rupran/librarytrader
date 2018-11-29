@@ -12,6 +12,7 @@ FILE_PATH = 'test/test_files/'
 RPATH_DIR = FILE_PATH + 'rpath_dir/'
 RPATH_SUB = RPATH_DIR + 'rpath_subdir/'
 LDLIB_DIR = FILE_PATH + 'ld_library_dir/'
+LOADERLIKE_DIR = FILE_PATH + 'loaderlike/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
 TEST_LIBRARY  = FILE_PATH + 'libmock.so'
 TEST_LIB_PLT  = FILE_PATH + 'libmock_plt.so'
@@ -27,6 +28,9 @@ TEST_LD_PATHS = RPATH_DIR + 'libldd_search.so'
 TEST_NOLDCONF = FILE_PATH + 'libnoldconfig.so'
 TEST_LDLIBC   = LDLIB_DIR + 'libc-2.23.so'
 TEST_EXECONLY = FILE_PATH + 'libnot_imported.so'
+TEST_LL       = LOADERLIKE_DIR + 'bin'
+TEST_LL1A     = LOADERLIKE_DIR + 'bin1a'
+TEST_LL2      = LOADERLIKE_DIR + 'bin2'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -335,6 +339,55 @@ class TestLibrary(unittest.TestCase):
         # In this case, the library not imported from TEST_BINARY should not
         # show up as a user of TEST_LIBRARY
         self.assertNotIn(not_imported.fullname, store[libpath].get_users_by_name('external'))
+
+    def test_6_propagate_calls_loaderlike(self):
+        store = LibraryStore()
+        bin1 = Library(os.path.abspath(TEST_LL))
+        bin1a = Library(os.path.abspath(TEST_LL1A))
+        bin2 = Library(os.path.abspath(TEST_LL2))
+
+        # Save possibly set LD_LIBRARY_PATH
+        backup = None
+        if 'LD_LIBRARY_PATH' in os.environ:
+            backup = os.environ['LD_LIBRARY_PATH']
+
+        # Set LD_LIBRARY_PATH and resolve libraries
+        os.environ['LD_LIBRARY_PATH'] = '$ORIGIN/'
+        for binary in (bin1, bin1a, bin2):
+            store.resolve_libs_recursive(binary)
+
+        resolve_calls(store)
+        store.resolve_all_functions_from_binaries()
+
+        # Possibly restore LD_LIBRARY_PATH
+        if backup:
+            os.environ['LD_LIBRARY_PATH'] = backup
+        else:
+            del os.environ['LD_LIBRARY_PATH']
+
+        lib1 = bin1.needed_libs['lib1.so']
+        lib2 = store[lib1].needed_libs['lib2.so']
+        # Check if the weak definition of 'wfunc' in 'lib2.so' is not used by
+        # 'lib1.so' but overridden by the strong definition in 'bin'
+        self.assertIn(lib1, store[bin1.fullname].get_users_by_name('wfunc'))
+        self.assertNotIn(bin1.fullname, store[lib2].get_users_by_name('wfunc'))
+        self.assertNotIn(lib1, store[lib2].get_users_by_name('wfunc'))
+        # However, 'bin1a' and 'lib1a.so' should appear for 'wfunc' in 'lib2.so'
+        # as bin1a does not override 'wfunc' itself
+        lib1a = bin1a.needed_libs['lib1a.so']
+        self.assertIn(bin1a.fullname, store[lib2].get_users_by_name('wfunc'))
+        self.assertIn(lib1a, store[lib2].get_users_by_name('wfunc'))
+        # Check that the weak definition in 'bin2' is only marked as external
+        # but the use is actually overriden by the one in 'lib2.so'
+        self.assertSetEqual(store[bin2.fullname].get_users_by_name('one_more'),
+                            set(['TOPLEVEL']))
+        # Check if the deepest transitively called functions has all binaries
+        # as their user
+        lib3 = store[lib2].needed_libs['lib3.so']
+        for binary in (bin1, bin1a, bin2):
+            self.assertIn(binary.fullname,
+                          store[lib3].get_users_by_name('deeper'))
+
 
     def test_7_store_load(self):
         store, binary = create_store_and_lib(TEST_BINARY,

@@ -24,7 +24,8 @@ from elftools.elf.elffile import ELFFile
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
 
-DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug', '.build-id')
+DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug')
+BUILDID_DIR = os.path.join(os.sep, DEBUG_DIR, '.build-id')
 
 def _round_up_to_alignment(size, alignment):
     if size == 0:
@@ -57,6 +58,8 @@ class Library:
 
         # exported_addrs: address -> symbol names
         self.exported_addrs = collections.defaultdict(list)
+        # export_bind: symbol name -> symbol bind type (STB_{WEAK,GLOBAL,...})
+        self.export_bind = {}
         # exported_names: symbol name -> address
         self.exported_names = collections.OrderedDict()
         # export_users: address -> list of referencing library paths
@@ -134,6 +137,7 @@ class Library:
                 if symbol_bind != 'STB_LOCAL':
                     name = self._get_versioned_name(symbol, idx)
                     self.export_users[start] = set()
+                    self.export_bind[name] = symbol_bind
                     self.exported_names[name] = start
                     self.exported_addrs[start].append(name)
                     size = symbol['st_size']
@@ -303,6 +307,7 @@ class Library:
         external_elf = None
         symtab = self._elffile.get_section_by_name('.symtab')
         if not symtab:
+            paths = [os.path.join(DEBUG_DIR, self.fullname[1:])]
             id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
             if not id_section:
                 return
@@ -311,7 +316,10 @@ class Library:
                 if note['n_type'] != 'NT_GNU_BUILD_ID':
                     continue
                 build_id = note['n_desc']
-                path = os.path.join(DEBUG_DIR, build_id[:2], build_id[2:] + '.debug')
+                paths.insert(0, os.path.join(BUILDID_DIR,
+                                             build_id[:2],
+                                             build_id[2:] + '.debug'))
+            for path in paths:
                 if not os.path.isfile(path):
                     continue
                 try:
@@ -366,15 +374,16 @@ class Library:
             hdr['e_machine'] == o_hdr['e_machine']
 
     def add_export_user(self, addr, user_path):
-        if addr not in self.export_users and addr in self.local_functions:
-            logging.debug('%s: adding user to local function %x: %s',
-                          self.fullname, addr, user_path)
-            return False
         if addr not in self.export_users:
-            logging.error('%s not found in %s (user would be %s)', addr,
-                          self.fullname, user_path)
-            return False
-        if user_path not in self.export_users[addr]:
+            if addr in self.local_functions:
+                logging.debug('%s: adding user to local function %x: %s',
+                            self.fullname, addr, user_path)
+            else:
+                logging.error('%s not found in %s (user would be %s)', addr,
+                            self.fullname, user_path)
+        elif user_path not in self.export_users[addr]:
+            logging.debug('%s: adding user to export function %x: %s',
+                          self.fullname, addr, user_path)
             self.export_users[addr].add(user_path)
             return True
         return False
@@ -386,11 +395,17 @@ class Library:
         return self.export_users.get(addr, [])
 
     def find_export(self, requested_name):
+        # Direct match, name + version
         if requested_name in self.exported_names:
             return self.exported_names[requested_name]
+        # No version requested, but version defined
+        # TODO: check uniqueness of split name
         for name, addr in self.exported_names.items():
             if name.split('@@')[0] == requested_name:
                 return addr
+        # Version requested, but no version defined -> base version
+        if requested_name.split('@@')[0] in self.exported_names:
+            return self.exported_names[requested_name.split('@@')[0]]
         return None
 
     def get_function_ranges(self):

@@ -88,6 +88,9 @@ class Runner():
                             help='Do not recursively resolve libraries')
         parser.add_argument('--uprobe-strings', action='store_true',
                             help='Generate uprobe strings into a file')
+        parser.add_argument('--loaderlike', action='store_true',
+                            help='Resolve functions only from executables ' \
+                            'while respecting weak symbols')
         self.args = parser.parse_args()
 
         loglevel = logging.WARNING
@@ -140,13 +143,13 @@ class Runner():
         if self.args.interface_calls:
             self._process_interface_calls()
 
-        if self.args.resolve_functions:
-            self.get_all_resolved_functions()
-
         if self.args.used_functions:
             self._mark_extra_functions_as_used()
 
-        if self.args.transitive_users:
+        if self.args.resolve_functions:
+            self.get_all_resolved_functions()
+
+        if self.args.transitive_users and not self.args.loaderlike:
             self._propagate_users_through_calls()
 
         if self.args.store:
@@ -171,7 +174,10 @@ class Runner():
 
     def get_all_resolved_functions(self):
         if self.all_resolved_functions is None:
-            self.store.resolve_all_functions(self.args.all_entries)
+            if self.args.loaderlike:
+                self.store.resolve_all_functions_from_binaries()
+            else:
+                self.store.resolve_all_functions(self.args.all_entries)
             self.all_resolved_functions = self._create_export_user_mapping()
         return self.all_resolved_functions
 
