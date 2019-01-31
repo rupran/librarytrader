@@ -304,7 +304,7 @@ class LibraryStore(BaseStore):
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 
-    def resolve_functions_loaderlike(self, library):
+    def resolve_functions_loaderlike(self, library, force_add_to_exports=False):
         users = collections.defaultdict(set)
 
         if isinstance(library, str):
@@ -338,7 +338,10 @@ class LibraryStore(BaseStore):
             cur_name, cur_path = worklist.popleft()
             logging.debug('... working on %s', cur_path)
             cur_lib = self.get_from_path(cur_path)
-            toplevel = cur_lib == library
+            add_export = cur_lib == library
+            if force_add_to_exports:
+                add_export = True
+            #print(cur_lib.fullname, library.fullname, add_export)
             for imp_name in cur_lib.imports:
                 # FIXME: real behaviour with versions?
                 # Crossreferencing here only makes sense for single binaries
@@ -350,17 +353,20 @@ class LibraryStore(BaseStore):
                                       cur_name, name, already_defined[name])
                         def_lib_path, addr, bind = already_defined[name]
                         cur_lib.imports[imp_name] = def_lib_path
+                        if add_export:
+                            self.get_from_path(def_lib_path).add_export_user(addr, cur_lib.fullname)
+                            users[(def_lib_path, addr)].add(cur_lib.fullname)
                         found = True
                         overload = True
                         break
 
                 if not found:
                     found = self._find_imported_function(imp_name, cur_lib,
-                                                         users=users, add=toplevel)
+                                                         users=users, add=add_export)
                 if not found:
                     found = self._find_imported_function(imp_name, cur_lib,
                                                          map_func=lambda x: x.split('@@')[0],
-                                                         users=users, add=toplevel)
+                                                         users=users, add=add_export)
                 if not found:
                     logging.info('absolutely no match for %s:%s:%s (working on %s)',
                                  cur_name, cur_path, imp_name, library.fullname)
@@ -379,7 +385,7 @@ class LibraryStore(BaseStore):
 
         return users, overload
 
-    def resolve_all_functions_from_binaries(self):
+    def resolve_all_functions_from_binaries(self, force_add_to_exports=False):
         objs = [lib for lib in self.get_executable_objects()
                 if not '.so' in lib.fullname]
         objs.extend(lib for lib in (self.get_from_path(path) for path
@@ -388,7 +394,7 @@ class LibraryStore(BaseStore):
         logging.info('Resolving functions from executables...')
         for lib in objs:
             logging.info('... in %s', lib.fullname)
-            users, overload = self.resolve_functions_loaderlike(lib)
+            users, overload = self.resolve_functions_loaderlike(lib, force_add_to_exports)
             self.propagate_call_usage(user_dict=users, overload=overload)
 
         logging.info('... done!')
