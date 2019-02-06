@@ -150,7 +150,7 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     cs_obj = capstone.Cs(capstone.CS_ARCH_X86, arch)
     cs_obj.detail = True
 
-    for start, size in ranges:
+    for start, size in ranges.items():
         disas, resolution_function = disas_function(library, start, size, cs_obj)
         calls_to_exports, calls_to_imports, calls_to_locals = resolution_function(library, disas)
         if calls_to_exports:

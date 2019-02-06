@@ -500,6 +500,7 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "internal_calls")
                 dump_dict_with_set_value(lib_dict, content, "external_calls")
                 dump_dict_with_set_value(lib_dict, content, "local_calls")
+                lib_dict["ranges"] = content.ranges
 
             output[path] = lib_dict
 
@@ -548,6 +549,7 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "internal_calls", int)
                     load_dict_with_set_values(content, library, "external_calls", int)
                     load_dict_with_set_values(content, library, "local_calls", int)
+                    library.ranges = {int(key):value for key, value in content["ranges"].items()}
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     self._add_library(path, library)
 

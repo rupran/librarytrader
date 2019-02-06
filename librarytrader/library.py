@@ -81,7 +81,7 @@ class Library:
         self.runpaths = []
         self.soname = None
 
-        self.ranges = set()
+        self.ranges = {}
         self.external_calls = {}
         self.internal_calls = {}
         self.local_calls = {}
@@ -141,7 +141,11 @@ class Library:
                     self.exported_names[name] = start
                     self.exported_addrs[start].append(name)
                     size = symbol['st_size']
-                    self.ranges.add((start, size))
+                    if start in self.ranges and self.ranges[start] != size:
+                        logging.warning("differing range %s:%x:(%x <-> %x",
+                                         self.fullname, start,
+                                         self.ranges[start], size)
+                    self.ranges[start] = size
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -343,7 +347,7 @@ class Library:
             if symbol['st_info']['bind'] == 'STB_LOCAL':
                 start = self._get_symbol_offset(symbol)
                 size = symbol['st_size']
-                self.ranges.add((start, size))
+                self.ranges[start] = size
                 self.local_functions.add(start)
 
         if external_elf:
