@@ -426,6 +426,10 @@ class LibraryStore(BaseStore):
         for (name, addr), user_libs in user_dict.items():
             if user_libs:
                 worklist.add((self.get_from_path(name), addr))
+            elif 'main' in self.get_from_path(name).exported_addrs[addr]:
+                logging.debug('adding %s:main to worklist', name)
+                worklist.add((self.get_from_path(name), addr))
+
 
         logging.debug('initial worklist: %s', str([(l.fullname, a) for l, a in worklist]))
 
@@ -500,6 +504,7 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "internal_calls")
                 dump_dict_with_set_value(lib_dict, content, "external_calls")
                 dump_dict_with_set_value(lib_dict, content, "local_calls")
+                dump_dict_with_set_value(lib_dict, content, "local_users")
                 lib_dict["ranges"] = content.ranges
 
             output[path] = lib_dict
@@ -549,6 +554,7 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "internal_calls", int)
                     load_dict_with_set_values(content, library, "external_calls", int)
                     load_dict_with_set_values(content, library, "local_calls", int)
+                    load_dict_with_set_values(content, library, "local_users", int)
                     library.ranges = {int(key):value for key, value in content["ranges"].items()}
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     self._add_library(path, library)

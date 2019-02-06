@@ -68,6 +68,7 @@ class Library:
         # imports: symbol name -> path to implementing library
         self.imports = collections.OrderedDict()
         self.local_functions = set()
+        self.local_users = collections.OrderedDict()
 
         # exports_plt: plt address -> implementing address
         self.exports_plt = collections.OrderedDict()
@@ -344,11 +345,19 @@ class Library:
             shndx = symbol['st_shndx']
             if shndx != 'SHN_UNDEF':
                 self.function_addrs.add(self._get_symbol_offset(symbol))
-            if symbol['st_info']['bind'] == 'STB_LOCAL':
                 start = self._get_symbol_offset(symbol)
-                size = symbol['st_size']
-                self.ranges[start] = size
-                self.local_functions.add(start)
+                if start not in self.exported_addrs:
+                    size = symbol['st_size']
+                    self.ranges[start] = size
+                    name = symbol.name
+                    if symbol.name == 'main':
+                        self.export_users[start] = set()
+                        self.export_bind[name] = 'STB_GLOBAL'
+                        self.exported_names[name] = start
+                        self.exported_addrs[start].append(name)
+                    else:
+                        self.local_functions.add(start)
+                        self.local_users[start] = set()
 
         if external_elf:
             external_elf.stream.close()
@@ -382,6 +391,11 @@ class Library:
             if addr in self.local_functions:
                 logging.debug('%s: adding user to local function %x: %s',
                             self.fullname, addr, user_path)
+                if addr not in self.local_users:
+                    self.local_users[addr] = set()
+                if user_path not in self.local_users[addr]:
+                    self.local_users[addr].add(user_path)
+                    return True
             else:
                 logging.error('%s not found in %s (user would be %s)', addr,
                             self.fullname, user_path)

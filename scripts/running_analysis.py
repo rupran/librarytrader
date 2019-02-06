@@ -237,6 +237,8 @@ class Runner():
     def count_and_print_resolved(self, do_print=True):
         collection = self.get_all_resolved_functions()
         histo_percent = collections.defaultdict(list)
+        histo_local = collections.defaultdict(list)
+        histo_total = collections.defaultdict(list)
         if do_print:
             print('= Count of all external function uses:')
         # Print sorted overview
@@ -248,20 +250,40 @@ class Runner():
                 if do_print:
                     print('-- {}: {}: {}'.format(function, len(importers),
                                                  importers))
+            n_global = 0
+            n_local = 0
+            u_global = 0
+            u_local = 0
             if self.store[lib].exported_addrs and ".so" in lib:
-                pctg = len(list(x for (x, y) in functions.items() if y)) \
-                       / len(self.store[lib].exported_addrs)
+                n_global = len(self.store[lib].exported_addrs)
+                u_global = len(list(x for (x, y) in functions.items() if y))
+                pctg = u_global / n_global
                 ipctg = int(pctg * 100)
                 if 'libc-2.2' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
                     print(ipctg, pctg, len(list(x for (x, y) in functions.items() if y)), lib)
-#                if pctg == 0:
-#                    print('0 percent: {}'.format(lib))
                 histo_percent[ipctg].append(lib)
+            if self.store[lib].local_functions and ".so" in lib:
+                n_local = len(self.store[lib].local_functions)
+                u_local = len(list(x for (x, y) in self.store[lib].local_users.items() if y))
+                pctg = u_local / n_local
+                ipctg = int(pctg * 100)
+                if 'libc-2.2' in lib or 'libstdc++' in lib or 'libgcj' in lib: #and do_print:
+                    print(ipctg, pctg, len(list(x for (x, y) in functions.items() if y)), lib)
+                histo_local[ipctg].append(lib)
+            if ".so" in lib and (n_local + n_global) != 0:
+                total_pctg = (u_local + u_global) / (n_local + n_global)
+                total_ipctg = int(total_pctg * 100)
+                histo_total[total_ipctg].append(lib)
 
         with open('{}_import_use_histo.csv'.format(self.args.store), 'w') as outfd:
-#            for key, value in sorted(histo_percent.items()):
             for key in range(101):
                 outfd.write('{},{},{}\n'.format(key, len(histo_percent[key]), histo_percent[key]))
+        with open('{}_local_use_histo.csv'.format(self.args.store), 'w') as outfd:
+            for key in range(101):
+                outfd.write('{},{},{}\n'.format(key, len(histo_local[key]), histo_local[key]))
+        with open('{}_total_use_histo.csv'.format(self.args.store), 'w') as outfd:
+            for key in range(101):
+                outfd.write('{},{},{}\n'.format(key, len(histo_total[key]), histo_total[key]))
 
     def do_import_export_histograms(self):
         libobjs = self.store.get_entry_points(self.args.all_entries)
