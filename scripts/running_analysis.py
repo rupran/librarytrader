@@ -190,7 +190,10 @@ class Runner():
                 library = self.store.get_from_path(path)
                 if not library:
                     continue
-                addr = library.find_export(function)
+                if function.startswith('LOCAL_'):
+                    addr = int(function[6:])
+                else:
+                    addr = library.find_export(function)
                 if addr is None:
                     logging.warning('mark_extra: %s not found in %s', function,
                                     library.fullname)
