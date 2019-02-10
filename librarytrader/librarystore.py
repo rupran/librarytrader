@@ -497,12 +497,15 @@ class LibraryStore(BaseStore):
                 lib_dict["function_addrs"] = list(sorted(content.function_addrs))
                 dump_ordered_dict_as_list(lib_dict, content, "imports_plt")
                 dump_ordered_dict_as_list(lib_dict, content, "exports_plt")
-                lib_dict["local_functions"] = list(content.local_functions)
                 dump_ordered_dict_as_list(lib_dict, content, "needed_libs")
                 dump_ordered_dict_as_list(lib_dict, content, "all_imported_libs")
                 lib_dict["rpaths"] = content.rpaths
                 dump_dict_with_set_value(lib_dict, content, "internal_calls")
                 dump_dict_with_set_value(lib_dict, content, "external_calls")
+                lib_dict["local_functions"] = {addr: sorted(names) \
+                                               for addr, names \
+                                               in content.local_functions.items()}
+                dump_dict_with_set_value(lib_dict, content, "local_functions")
                 dump_dict_with_set_value(lib_dict, content, "local_calls")
                 dump_dict_with_set_value(lib_dict, content, "local_users")
                 lib_dict["ranges"] = content.ranges
@@ -547,12 +550,15 @@ class LibraryStore(BaseStore):
                     library.function_addrs = set(content["function_addrs"])
                     load_ordered_dict_from_list(content, library, "imports_plt")
                     load_ordered_dict_from_list(content, library, "exports_plt")
-                    library.local_functions = set(content["local_functions"])
                     load_ordered_dict_from_list(content, library, "needed_libs")
                     load_ordered_dict_from_list(content, library, "all_imported_libs")
                     library.rpaths = content["rpaths"]
                     load_dict_with_set_values(content, library, "internal_calls", int)
                     load_dict_with_set_values(content, library, "external_calls", int)
+                    library.local_functions = collections.defaultdict(list)
+                    for addr, names in content["local_functions"].items():
+                        library.local_functions[addr] = names
+                    load_dict_with_set_values(content, library, "local_functions", int)
                     load_dict_with_set_values(content, library, "local_calls", int)
                     load_dict_with_set_values(content, library, "local_users", int)
                     library.ranges = {int(key):value for key, value in content["ranges"].items()}

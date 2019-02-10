@@ -67,7 +67,8 @@ class Library:
         self.function_addrs = set()
         # imports: symbol name -> path to implementing library
         self.imports = collections.OrderedDict()
-        self.local_functions = set()
+        # local functions: address -> symbol name
+        self.local_functions = collections.defaultdict(list)
         self.local_users = collections.OrderedDict()
 
         # exports_plt: plt address -> implementing address
@@ -356,7 +357,7 @@ class Library:
                         self.exported_names[name] = start
                         self.exported_addrs[start].append(name)
                     else:
-                        self.local_functions.add(start)
+                        self.local_functions[start].append(name)
                         self.local_users[start] = set()
 
         if external_elf:
