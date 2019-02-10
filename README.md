@@ -1,6 +1,6 @@
 # librarytrader
 
-[![Build Status](https://travis-ci.org/rupran/librarytrader.svg?branch=master)](https://travis-ci.org/rupran/librarytrader)
+[![pipeline status](https://gitlab.cs.fau.de/ziegler/librarytrader/badges/master/pipeline.svg)](https://gitlab.cs.fau.de/ziegler/librarytrader/commits/master)
 
 A library to gather imports and exports of ELF shared libraries
 
