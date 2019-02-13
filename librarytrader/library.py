@@ -183,12 +183,19 @@ class Library:
         if relaplt and plt and dynsym:
             plt_base = plt['sh_offset']
 
-            # On 32-bit binaries, sh_entsize might be 4 even though an entry
-            # in the .plt is in fact 16 bytes long, so round up to sh_addralign.
-            # (see https://reviews.llvm.org/D9560)
-            increment = _round_up_to_alignment(plt['sh_entsize'], plt['sh_addralign'])
+            if self.elfheader['e_machine'] == 'EM_AARCH64':
+                increment = 16
+                # The offset of the first real PLT entry is actually 32 bytes
+                # but we increment in the loop before accessing the entry.
+                plt_offset = 16
+                # For 32 bit ARM, this would be increment 12, plt_offset 8
+            else:
+                # On x86 32-bit binaries, sh_entsize might be 4 even though an
+                # entry in the .plt is in fact 16 bytes long, so round up to
+                # sh_addralign (see https://reviews.llvm.org/D9560).
+                increment = _round_up_to_alignment(plt['sh_entsize'], plt['sh_addralign'])
+                plt_offset = 0
 
-            plt_offset = 0
             for reloc in sorted(relaplt.iter_relocations(), key=lambda rel: rel['r_offset']):
                 # The first entry in .plt is special, it contains the logic for
                 # all other entries to jump into the loader. Real functions come
@@ -212,6 +219,10 @@ class Library:
                           self.fullname)
 
     def parse_plt_got(self):
+        if self.elfheader['e_machine'] != 'EM_386' and \
+                self.elfheader['e_machine'] != 'EM_X86_64':
+            return
+
         pltgot = self._elffile.get_section_by_name('.plt.got')
         if not pltgot:
             return

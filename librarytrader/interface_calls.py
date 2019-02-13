@@ -18,6 +18,7 @@
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
 from collections import defaultdict
+from distutils.spawn import find_executable
 import logging
 import multiprocessing
 import os
@@ -35,10 +36,6 @@ sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from librarytrader.library import Library
 
-CALL_REGEX = re.compile(r'^call[q]?\s+([0-9a-f]+).*$')
-JMP_REGEX = re.compile(r'^jmp[q]?\s+([0-9a-f]+).*$')
-JNE_REGEX = re.compile(r'^j[n]?e\s+([0-9a-f]+).*$')
-
 def disassemble_objdump(library, start, length, obj=None):
     disassembly = []
     if length == 0:
@@ -47,7 +44,19 @@ def disassemble_objdump(library, start, length, obj=None):
     # objdump requires addresses, not offsets
     start += library.load_offset
 
-    cmdline = ['objdump', '-d', '--no-show-raw-insn',
+    objdump_prefix = ''
+    if library.elfheader['e_machine'] == 'EM_AARCH64':
+        objdump_prefix = 'aarch64-linux-gnu-'
+    elif library.elfheader['e_machine'] == 'EM_386' or \
+            library.elfheader['e_machine'] == 'EM_X86_64':
+        objdump_prefix = 'x86_64-linux-gnu-'
+    objdump = '{}objdump'.format(objdump_prefix)
+
+    if find_executable(objdump) is None:
+        logging.warning('{} does not exist, using generic path'.format(objdump))
+        objdump = 'objdump'
+
+    cmdline = [objdump, '-d', '--no-show-raw-insn',
                '--start-address={}'.format(hex(start)),
                '--stop-address={}'.format(hex(start + length)),
                library.fullname]
@@ -70,6 +79,15 @@ def find_calls_from_objdump(library, disas):
     calls_to_exports = set()
     calls_to_imports = set()
     calls_to_locals = set()
+
+    if library.elfheader['e_machine'] == 'EM_AARCH64':
+        logging.error('objdump for AArch64 not supported yet!')
+        return (calls_to_exports, calls_to_imports, calls_to_locals)
+    elif library.elfheader['e_machine'] == 'EM_386' or \
+            library.elfheader['e_machine'] == 'EM_X86_64':
+        CALL_REGEX = re.compile(r'^call[q]?\s+([0-9a-f]+).*$')
+        JMP_REGEX = re.compile(r'^jmp[q]?\s+([0-9a-f]+).*$')
+        JNE_REGEX = re.compile(r'^j[n]?e\s+([0-9a-f]+).*$')
 
     for _, decoded in disas:
         match = CALL_REGEX.match(decoded)
@@ -117,12 +135,24 @@ def find_calls_from_capstone(library, disas):
     calls_to_exports = set()
     calls_to_imports = set()
     calls_to_locals = set()
+    if library.elfheader['e_machine'] == 'EM_AARCH64':
+        call_group = capstone.arm64_const.ARM64_GRP_CALL
+        jump_group = capstone.arm64_const.ARM64_GRP_JUMP
+        imm_tag = capstone.arm64.ARM64_OP_IMM
+    elif library.elfheader['e_machine'] == 'EM_386' or \
+            library.elfheader['e_machine'] == 'EM_X86_64':
+        call_group = capstone.x86_const.X86_GRP_CALL
+        jump_group = capstone.x86_const.X86_GRP_JUMP
+        imm_tag = capstone.x86.X86_OP_IMM
+    else:
+        logging.error('Unsupported machine type: {}'.format(library.elfheader['e_machine']))
+        return
+
     for instr in disas:
-        if instr.group(capstone.x86_const.X86_GRP_CALL) \
-                or instr.group(capstone.x86_const.X86_GRP_JUMP):
-            try:
-                target = int(instr.op_str, 16)
-            except ValueError:
+        if instr.group(call_group) or instr.group(jump_group):
+            if instr.operands[-1].type == imm_tag:
+                target = instr.operands[-1].value.imm
+            else:
                 continue
             if target in library.exported_addrs:
                 calls_to_exports.add(target)
@@ -144,10 +174,15 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     ranges = library.get_function_ranges()
 
     # Disassemble with the right machine type
-    arch = capstone.CS_MODE_64
+    arch = capstone.CS_ARCH_X86
+    mode = capstone.CS_MODE_64
     if library.elfheader['e_machine'] == 'EM_386':
-        arch = capstone.CS_MODE_32
-    cs_obj = capstone.Cs(capstone.CS_ARCH_X86, arch)
+        mode = capstone.CS_MODE_32
+    if library.elfheader['e_machine'] == 'EM_AARCH64':
+        arch = capstone.CS_ARCH_ARM64
+        mode = capstone.CS_MODE_ARM
+
+    cs_obj = capstone.Cs(arch, mode)
     cs_obj.detail = True
 
     for start, size in ranges.items():
