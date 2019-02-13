@@ -145,8 +145,8 @@ class Library:
                     size = symbol['st_size']
                     if start in self.ranges and self.ranges[start] != size:
                         logging.warning("differing range %s:%x:(%x <-> %x",
-                                         self.fullname, start,
-                                         self.ranges[start], size)
+                                        self.fullname, start,
+                                        self.ranges[start], size)
                     self.ranges[start] = size
 
     def parse_dynamic(self):
@@ -332,11 +332,11 @@ class Library:
                     external_elf = ELFFile(open(path, 'rb'))
                     symtab = external_elf.get_section_by_name('.symtab')
                     logging.debug('Found external symtab for %s at %s',
-                                self.fullname, path)
+                                  self.fullname, path)
                     break
                 except (ELFError, OSError) as err:
                     logging.debug('Failed to open external symbol table for %s at %s: %s',
-                                self.fullname, path, err)
+                                  self.fullname, path, err)
                     continue
 
         if not symtab:
@@ -391,7 +391,7 @@ class Library:
         if addr not in self.export_users:
             if addr in self.local_functions:
                 logging.debug('%s: adding user to local function %x: %s',
-                            self.fullname, addr, user_path)
+                              self.fullname, addr, user_path)
                 if addr not in self.local_users:
                     self.local_users[addr] = set()
                 if user_path not in self.local_users[addr]:
@@ -399,7 +399,7 @@ class Library:
                     return True
             else:
                 logging.error('%s not found in %s (user would be %s)', addr,
-                            self.fullname, user_path)
+                              self.fullname, user_path)
         elif user_path not in self.export_users[addr]:
             logging.debug('%s: adding user to export function %x: %s',
                           self.fullname, addr, user_path)
