@@ -20,6 +20,7 @@ import logging
 import os
 
 from elftools.common.exceptions import ELFError
+from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
@@ -48,8 +49,14 @@ class Library:
             self.elfheader = self._elffile.header
             text = self._elffile.get_section_by_name('.text')
             if not text:
-                raise ELFError("{} has no text section".format(filename))
-            self.load_offset = text['sh_addr'] - text['sh_offset']
+                for segment in self._elffile.iter_segments():
+                    if segment['p_type'] == 'PT_LOAD' and segment['p_flags'] == 0x5:
+                        self.load_offset = segment['p_vaddr'] - segment['p_offset']
+                        break
+                else:
+                    raise ELFError("{} has no text section or PT_LOAD".format(filename))
+            else:
+                self.load_offset = text['sh_addr'] - text['sh_offset']
             self.entrypoint = None
             if self.elfheader['e_type'] == 'ET_EXEC':
                 self.entrypoint = self.elfheader['e_entry'] - self.load_offset
@@ -126,18 +133,30 @@ class Library:
     def parse_dynsym(self):
         section = self._elffile.get_section_by_name('.dynsym')
         if not section:
+            # Try to get segment if no section was found
+            for segment in self._elffile.iter_segments():
+                if isinstance(segment, DynamicSegment):
+                    section = segment
+                    break
+
+        if not section:
             return
 
         for idx, symbol in self._get_function_symbols(section):
             shndx = symbol['st_shndx']
             symbol_bind = symbol['st_info']['bind']
             if shndx == 'SHN_UNDEF':
-                self.imports[self._get_versioned_name(symbol, idx)] = None
+                name = self._get_versioned_name(symbol, idx)
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                self.imports[name] = None
             else:
                 start = self._get_symbol_offset(symbol)
                 self.function_addrs.add(start)
                 if symbol_bind != 'STB_LOCAL':
                     name = self._get_versioned_name(symbol, idx)
+                    if isinstance(name, bytes):
+                        name = name.decode('utf-8')
                     self.export_users[start] = set()
                     self.export_bind[name] = symbol_bind
                     self.exported_names[name] = start
@@ -152,20 +171,35 @@ class Library:
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
         if not section:
+            # Try to get segment if no section was found
+            for segment in self._elffile.iter_segments():
+                if isinstance(segment, DynamicSegment):
+                    section = segment
+                    break
+
+        if not section:
             return
 
         for tag in section.iter_tags():
             if tag.entry.d_tag == 'DT_NEEDED':
+                if isinstance(tag.needed, bytes):
+                    tag.needed = tag.needed.decode('utf-8')
                 self.needed_libs[tag.needed] = None
             elif tag.entry.d_tag == 'DT_RPATH':
+                if isinstance(tag.rpath, bytes):
+                    tag.rpath = tag.rpath.decode('utf-8')
                 self.rpaths = [rpath.replace("$ORIGIN",
                                              os.path.dirname(self.fullname))
                                for rpath in tag.rpath.split(':')]
             elif tag.entry.d_tag == 'DT_RUNPATH':
+                if isinstance(tag.runpath, bytes):
+                    tag.runpath = tag.runpath.decode('utf-8')
                 self.runpaths = [rpath.replace("$ORIGIN",
                                                os.path.dirname(self.fullname))
                                  for rpath in tag.runpath.split(':')]
             elif tag.entry.d_tag == 'DT_SONAME':
+                if isinstance(tag.soname, bytes):
+                    tag.soname = tag.soname.decode('utf-8')
                 self.soname = tag.soname
             elif tag.entry.d_tag == 'DT_FLAGS_1':
                 # PIE
