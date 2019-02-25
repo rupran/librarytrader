@@ -1,5 +1,5 @@
 CC=gcc
-SHARED_FLAGS=-shared -fPIC -O3
+SHARED_FLAGS=-shared -fPIC -O3 -m64
 CFLAGS=$(SHARED_FLAGS) -Wl,-Bsymbolic-functions
 RPATH_DIR=rpath_dir
 RPATH_SUBDIR=$(RPATH_DIR)/rpath_subdir

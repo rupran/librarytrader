@@ -425,5 +425,17 @@ class TestLibrary(unittest.TestCase):
         self.assertIn(binary.fullname, lib.get_users_by_name('external_caller'))
         self.assertIn(binary.fullname, lib.get_users_by_name('second_level_caller'))
 
+    def test_7_search_for_plt(self):
+        _, library = create_store_and_lib(TEST_LIBRARY)
+        searched_plt = library._search_for_plt()
+        section_plt = library._elffile.get_section_by_name('.plt')
+        self.assertEquals(searched_plt['sh_offset'], section_plt['sh_offset'])
+
+    def test_7_dynamic_rela_plt(self):
+        _, library = create_store_and_lib(TEST_LIBRARY)
+        searched_plt = library._create_mock_rela_plt()
+        section_plt = library._elffile.get_section_by_name('.rela.plt')
+        self.assertEquals(searched_plt['sh_offset'], section_plt['sh_offset'])
+
 if __name__ == '__main__':
     unittest.main()
