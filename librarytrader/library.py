@@ -258,9 +258,10 @@ class Library:
                     self.exported_addrs[start].append(name)
                     size = symbol['st_size']
                     if start in self.ranges and self.ranges[start] != size:
-                        logging.warning("differing range %s:%x:(%x <-> %x",
+                        logging.warning("differing range %s:%x:(%x <-> %x)",
                                         self.fullname, start,
                                         self.ranges[start], size)
+                        size = max(self.ranges[start], size)
                     self.ranges[start] = size
 
     def parse_dynamic(self):
