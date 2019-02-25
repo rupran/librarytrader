@@ -22,6 +22,7 @@ import os
 from elftools.common.exceptions import ELFError
 from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
+from elftools.elf.relocation import RelocationSection
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
 
@@ -130,15 +131,109 @@ class Library:
             return symbol.name
         return '{}@@{}'.format(symbol.name, self._version_names[idx])
 
-    def parse_dynsym(self):
-        section = self._elffile.get_section_by_name('.dynsym')
-        if not section:
+    def _get_dynsym(self):
+        dynsym = self._elffile.get_section_by_name('.dynsym')
+        if not dynsym:
             # Try to get segment if no section was found
             for segment in self._elffile.iter_segments():
                 if isinstance(segment, DynamicSegment):
-                    section = segment
+                    dynsym = segment
                     break
+        return dynsym
 
+    def _search_for_plt(self):
+        text_start = 0
+        text_end = 0
+        for segment in self._elffile.iter_segments():
+            if segment['p_type'] == 'PT_LOAD' and segment['p_flags'] == 0x5:
+                text_start = segment['p_offset']
+                text_end = segment['p_filesz']
+                break
+
+        self.fd.seek(text_start)
+        read_increment = 16
+        plt_entsize = 16
+        plt_addralign = 16
+        if self.elfheader['e_machine'] == 'EM_X86_64':
+            match = lambda x: x[0:2] == b'\xff\x35' and x[6:8] == b'\xff\x25'
+        elif self.elfheader['e_machine'] == 'EM_386':
+            match = lambda x: x[0:2] == b'\xff\xb3' and x[6:8] == b'\xff\xa3'
+        elif self.elfheader['e_machine'] == 'EM_AARCH64':
+            if self.elfheader['e_ident']['EI_DATA'] == 'ELFDATA2LSB':
+                match = lambda x: x[0:4] == b'\xf0\x7b\xbf\xa9'
+            else:
+                match = lambda x: x[0:4] == b'\xa9\xbf\x7b\xf0'
+        else:
+            logging.error('unsupported architecture for .plt search')
+            return None
+
+        cur_offset = 0
+        plt_offset = None
+        read_bytes = self.fd.read(read_increment)
+        while cur_offset < text_end:
+            if match(read_bytes):
+                plt_offset = cur_offset
+                break
+            cur_offset += read_increment
+            read_bytes = self.fd.read(read_increment)
+
+        if not plt_offset:
+            return None
+        else:
+            logging.debug('found .plt at %x', plt_offset)
+
+        # These are the only attributes we use in parse_plt()
+        return {'sh_offset': plt_offset, 'sh_entsize': plt_entsize,
+                'sh_addralign': plt_addralign}
+
+    def _create_mock_rela_plt(self):
+        dynamic = None
+        for segment in self._elffile.iter_segments():
+            if isinstance(segment, DynamicSegment):
+                dynamic = segment
+                break
+
+        if not dynamic:
+            return None
+
+        is_rela = False
+        entsize = 0
+        tablesize = 0
+        offset = 0
+        if list(dynamic.iter_tags('DT_RELA')):
+            is_rela = True
+        elif not list(dynamic.iter_tags('DT_REL')):
+            return None
+
+        if is_rela:
+            relaent = list(dynamic.iter_tags('DT_RELAENT'))
+            pltrelsz = list(dynamic.iter_tags('DT_PLTRELSZ'))
+            jmprel = list(dynamic.iter_tags('DT_JMPREL'))
+            if not relaent or not pltrelsz or not jmprel:
+                return None
+            entsize = relaent[0].entry.d_val
+            tablesize = pltrelsz[0].entry.d_val
+            offset = jmprel[0].entry.d_val
+            sectype = 'SHT_RELA'
+        else:
+            relent = list(dynamic.iter_tags('DT_RELENT'))
+            pltrelsz = list(dynamic.iter_tags('DT_PLTRELSZ'))
+            jmprel = list(dynamic.iter_tags('DT_JMPREL'))
+            if not relent or not pltrelsz or not jmprel:
+                return None
+            entsize = relent[0].entry.d_val
+            tablesize = pltrelsz[0].entry.d_val
+            offset = jmprel[0].entry.d_val
+            sectype = 'SHT_REL'
+
+        hdr = {'sh_size': tablesize, 'sh_offset': offset - self.load_offset,
+               'sh_entsize': entsize, 'sh_flags': 0x2, 'sh_addralign': 8,
+               'sh_type': sectype}
+        #print(self.fullname, hdr, list(rel.iter_relocations())[0])
+        return RelocationSection(hdr, '.rela.plt', self._elffile)
+
+    def parse_dynsym(self):
+        section = self._get_dynsym()
         if not section:
             return
 
@@ -212,8 +307,12 @@ class Library:
             relaplt = self._elffile.get_section_by_name('.rel.plt')
         else:
             relaplt = self._elffile.get_section_by_name('.rela.plt')
+        if not relaplt:
+            relaplt = self._create_mock_rela_plt()
         plt = self._elffile.get_section_by_name('.plt')
-        dynsym = self._elffile.get_section_by_name('.dynsym')
+        if not plt:
+            plt = self._search_for_plt()
+        dynsym = self._get_dynsym()
         if relaplt and plt and dynsym:
             plt_base = plt['sh_offset']
 
@@ -236,9 +335,16 @@ class Library:
                 # after that.
                 plt_offset += increment
 
+                symbol = None
                 symbol_index = reloc['r_info_sym']
-                symbol = dynsym.get_symbol(symbol_index)
-                if not symbol.name:
+                if hasattr(dynsym, 'get_symbol'):
+                    if symbol_index < dynsym.num_symbols():
+                        symbol = dynsym.get_symbol(symbol_index)
+                else:
+                    symbol_list = list(dynsym.iter_symbols())
+                    if symbol_index < len(symbol_list):
+                        symbol = symbol_list[symbol_index]
+                if not symbol or not symbol.name:
                     continue
 
                 plt_addr = plt_base + plt_offset
