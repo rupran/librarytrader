@@ -422,10 +422,8 @@ class LibraryStore(BaseStore):
             for lib in lib_worklist:
                 for addr, users in lib.export_users.items():
                     user_dict[(lib.fullname, addr)] = users.copy()
-                for sublib in [self.get_from_path(x) for _, x in
-                               lib.all_imported_libs.items() if x]:
-                    for addr, users in sublib.export_users.items():
-                        user_dict[(sublib.fullname, addr)] = users.copy()
+                for addr, users in lib.local_users.items():
+                    user_dict[(lib.fullname, addr)] = users.copy()
 
         # Starting points are all referenced exports
         worklist = set()
