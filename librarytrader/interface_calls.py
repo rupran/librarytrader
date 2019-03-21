@@ -204,16 +204,27 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
 
 def map_wrapper(path):
     try:
-        lib = Library(path, parse=True)
-    except (OSError, ELFError) as err:
-        logging.error('%s: %s', path, err)
-        return (None, None, None, 0)
+        if isinstance(path, str):
+            lib = Library(path, parse=True)
+        else:
+            lib = path
+            lib.fd = open(lib.fullname, 'rb')
+    except Exception as err:
+        logging.error('%s: %s', lib.fullname, err)
+        return (None, None, None, None, 0)
+
     internal_calls, external_calls, local_calls, duration = resolve_calls_in_library(lib)
+    lib.fd.close()
+    del lib.fd
     return (lib.fullname, internal_calls, external_calls, local_calls, duration)
 
 def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
-    libs = [lib.fullname for lib in sorted(store.get_library_objects(),
-                                           key=lambda x: -len(x.exported_addrs))]
+    # Pass by path (-> threads have to reconstruct)
+    #libs = [lib.fullname for lib in sorted(store.get_library_objects(),
+    #                                       key=lambda x: -len(x.exported_addrs))]
+    # Pass by object (-> threads need to open only)
+    libs = [lib for lib in sorted(store.get_library_objects(),
+                                  key=lambda x: -len(x.exported_addrs))]
     logging.info('Searching for calls in %d libraries...', len(libs))
     pool = multiprocessing.Pool(n_procs)
     result = pool.map(map_wrapper, libs, chunksize=1)
