@@ -148,7 +148,7 @@ def find_calls_from_capstone(library, disas):
         mem_tag = capstone.x86.X86_OP_MEM
     else:
         logging.error('Unsupported machine type: {}'.format(library.elfheader['e_machine']))
-        return
+        return (calls_to_exports, calls_to_imports, calls_to_locals)
 
     for instr in disas:
         if instr.group(call_group) or instr.group(jump_group):
