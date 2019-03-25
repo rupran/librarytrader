@@ -139,11 +139,13 @@ def find_calls_from_capstone(library, disas):
         call_group = capstone.arm64_const.ARM64_GRP_CALL
         jump_group = capstone.arm64_const.ARM64_GRP_JUMP
         imm_tag = capstone.arm64.ARM64_OP_IMM
+        mem_tag = None #TODO: not implemented
     elif library.elfheader['e_machine'] == 'EM_386' or \
             library.elfheader['e_machine'] == 'EM_X86_64':
         call_group = capstone.x86_const.X86_GRP_CALL
         jump_group = capstone.x86_const.X86_GRP_JUMP
         imm_tag = capstone.x86.X86_OP_IMM
+        mem_tag = capstone.x86.X86_OP_MEM
     else:
         logging.error('Unsupported machine type: {}'.format(library.elfheader['e_machine']))
         return
@@ -162,6 +164,24 @@ def find_calls_from_capstone(library, disas):
                 calls_to_imports.add(library.imports_plt[target])
             elif target in library.local_functions:
                 calls_to_locals.add(target)
+        elif mem_tag is not None:
+            for operand in instr.operands:
+                if operand.type == mem_tag:
+                    #print(hex(instr.address), instr.mnemonic, instr.op_str)
+                    #print(operand.value.mem.segment, operand.value.mem.base, operand.value.mem.index,
+                    #      operand.value.mem.scale, operand.value.mem.disp)
+                    if operand.value.mem.base == capstone.x86.X86_REG_RIP:
+                        addr = instr.address + operand.value.mem.disp + instr.size
+                        if addr in library.exported_addrs:
+                            calls_to_exports.add(addr)
+                            #print(hex(instr.address), instr.mnemonic, instr.op_str)
+                            #print(addr)
+                            #print("IN GLOBAL!")
+                        elif addr in library.local_functions:
+                            calls_to_locals.add(addr)
+                            #print(hex(instr.address), instr.mnemonic, instr.op_str)
+                            #print(addr)
+                            #print("IN LOCAL!")
 
     return (calls_to_exports, calls_to_imports, calls_to_locals)
 
