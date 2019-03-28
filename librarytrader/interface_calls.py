@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
+from bisect import bisect_right
 from collections import defaultdict
 from distutils.spawn import find_executable
 import logging
@@ -53,7 +54,7 @@ def disassemble_objdump(library, start, length, obj=None):
     objdump = '{}objdump'.format(objdump_prefix)
 
     if find_executable(objdump) is None:
-        logging.warning('{} does not exist, using generic path'.format(objdump))
+        logging.warning('%s does not exist, using generic path', objdump)
         objdump = 'objdump'
 
     cmdline = [objdump, '-d', '--no-show-raw-insn',
@@ -147,7 +148,7 @@ def find_calls_from_capstone(library, disas):
         imm_tag = capstone.x86.X86_OP_IMM
         mem_tag = capstone.x86.X86_OP_MEM
     else:
-        logging.error('Unsupported machine type: {}'.format(library.elfheader['e_machine']))
+        logging.error('Unsupported machine type: %s', library.elfheader['e_machine'])
         return (calls_to_exports, calls_to_imports, calls_to_locals)
 
     for instr in disas:
@@ -173,7 +174,6 @@ def find_calls_from_capstone(library, disas):
                 # range (for example, to skip the function prologue).
                 ranges = library.get_function_ranges()
                 sorted_range = sorted(ranges.keys())
-                from bisect import bisect_right
                 i = bisect_right(sorted_range, target)
                 # lower and upper bound
                 if i == 0 or i == len(sorted_range) + 1:
