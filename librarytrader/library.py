@@ -25,6 +25,8 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
+from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
+    ENUM_RELOC_TYPE_AARCH64
 
 DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug')
 BUILDID_DIR = os.path.join(os.sep, DEBUG_DIR, '.build-id')
@@ -431,6 +433,39 @@ class Library:
                     self.exports_plt[cur_entry] = \
                         self._get_symbol_offset(symbol)
 
+    def parse_rela_dyn(self):
+        if self.elfheader['e_machine'] == 'EM_386':
+            dynrel = self._elffile.get_section_by_name('.rel.dyn')
+        else:
+            dynrel = self._elffile.get_section_by_name('.rela.got')
+            if not dynrel:
+                dynrel = self._elffile.get_section_by_name('.rela.dyn')
+        if not dynrel:
+            return
+        dynsym = self._get_dynsym()
+        if not dynsym:
+            return
+        if self.elfheader['e_machine'] == 'EM_386':
+            target_reloc_type = ENUM_RELOC_TYPE_i386['R_386_GLOB_DAT']
+        elif self.elfheader['e_machine'] == 'EM_X86_64':
+            target_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_GLOB_DAT']
+        else:
+            target_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_GLOB_DAT']
+        for reloc in dynrel.iter_relocations():
+            got_offset = reloc['r_offset']
+            symbol_idx = reloc['r_info_sym']
+            reloc_type = reloc['r_info_type']
+            if reloc_type == target_reloc_type:
+                symbol = dynsym.get_symbol(symbol_idx)
+                if symbol['st_info']['type'] != 'STT_FUNC':
+                    continue
+                if symbol['st_shndx'] == 'SHN_UNDEF':
+                    self.imports_plt[got_offset] = \
+                        self._get_versioned_name(symbol, symbol_idx)
+                else:
+                    self.exports_plt[got_offset] = \
+                        self._get_symbol_offset(symbol)
+
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
         if not versions:
@@ -522,6 +557,7 @@ class Library:
         self.parse_dynsym()
         self.parse_plt()
         self.parse_plt_got()
+        self.parse_rela_dyn()
         self.parse_symtab()
         if self.entrypoint:
             self.function_addrs.add(self.entrypoint)

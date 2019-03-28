@@ -152,8 +152,12 @@ def find_calls_from_capstone(library, disas):
 
     for instr in disas:
         if instr.group(call_group) or instr.group(jump_group):
-            if instr.operands[-1].type == imm_tag:
-                target = instr.operands[-1].value.imm
+            operand = instr.operands[-1]
+            if operand.type == imm_tag:
+                target = operand.value.imm
+            elif operand.type == mem_tag and \
+                    operand.value.mem.base == capstone.x86.X86_REG_RIP:
+                target = instr.address + operand.value.mem.disp + instr.size
             else:
                 continue
             if target in library.exported_addrs:
@@ -164,24 +168,45 @@ def find_calls_from_capstone(library, disas):
                 calls_to_imports.add(library.imports_plt[target])
             elif target in library.local_functions:
                 calls_to_locals.add(target)
+            else:
+                # Some handwritten assembly code might jump into a function
+                # range (for example, to skip the function prologue).
+                ranges = library.get_function_ranges()
+                sorted_range = sorted(ranges.keys())
+                from bisect import bisect_right
+                i = bisect_right(sorted_range, target)
+                # lower and upper bound
+                if i == 0 or i == len(sorted_range) + 1:
+                    continue
+                start, size = (sorted_range[i-1], ranges[sorted_range[i-1]])
+                # jump into same range we're coming from
+                if instr.address in range(start, start + size):
+                    continue
+                # jump goes somewhere close to the target but outside the given
+                # size (happens for libgcc)
+                if target not in range(start, start + size):
+                    continue
+                if start in library.local_functions:
+                    calls_to_locals.add(start)
+                elif start in library.exported_addrs:
+                    calls_to_exports.add(start)
+                else:
+                    continue
+                logging.debug('%s: jump into function! %x -> %x (inside %x:%d)',
+                              library.fullname, instr.address, target, start,
+                              size)
         elif mem_tag is not None:
+            # detect memory references relative to RIP -> function pointers
             for operand in instr.operands:
-                if operand.type == mem_tag:
-                    #print(hex(instr.address), instr.mnemonic, instr.op_str)
-                    #print(operand.value.mem.segment, operand.value.mem.base, operand.value.mem.index,
-                    #      operand.value.mem.scale, operand.value.mem.disp)
-                    if operand.value.mem.base == capstone.x86.X86_REG_RIP:
-                        addr = instr.address + operand.value.mem.disp + instr.size
-                        if addr in library.exported_addrs:
-                            calls_to_exports.add(addr)
-                            #print(hex(instr.address), instr.mnemonic, instr.op_str)
-                            #print(addr)
-                            #print("IN GLOBAL!")
-                        elif addr in library.local_functions:
-                            calls_to_locals.add(addr)
-                            #print(hex(instr.address), instr.mnemonic, instr.op_str)
-                            #print(addr)
-                            #print("IN LOCAL!")
+                if operand.type != mem_tag:
+                    continue
+                if operand.value.mem.base != capstone.x86.X86_REG_RIP:
+                    continue
+                addr = instr.address + operand.value.mem.disp + instr.size
+                if addr in library.exported_addrs:
+                    calls_to_exports.add(addr)
+                elif addr in library.local_functions:
+                    calls_to_locals.add(addr)
 
     return (calls_to_exports, calls_to_imports, calls_to_locals)
 
