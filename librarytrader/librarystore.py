@@ -561,8 +561,7 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "external_calls", int)
                     library.local_functions = collections.defaultdict(list)
                     for addr, names in content["local_functions"].items():
-                        library.local_functions[addr] = names
-                    load_dict_with_set_values(content, library, "local_functions", int)
+                        library.local_functions[int(addr)] = names
                     load_dict_with_set_values(content, library, "local_calls", int)
                     load_dict_with_set_values(content, library, "local_users", int)
                     library.ranges = {int(key):value for key, value in content["ranges"].items()}
