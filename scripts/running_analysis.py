@@ -185,8 +185,6 @@ class Runner():
         with open(self.args.used_functions, 'r') as infd:
             for line in infd:
                 path, function = line.strip().split(':')
-                if not os.path.isfile(path):
-                    continue
                 library = self.store.get_from_path(path)
                 if not library:
                     continue
