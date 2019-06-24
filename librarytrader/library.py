@@ -111,6 +111,8 @@ class Library:
         for idx, symbol in enumerate(section.iter_symbols()):
             symbol_type = symbol['st_info']['type']
 
+            if idx == 0:
+                continue
             if symbol_type == 'STT_FUNC':
                 pass
             elif (ei_osabi == 'ELFOSABI_LINUX' or \
@@ -120,6 +122,9 @@ class Library:
                 # STT_IFUNC (which is the same value as STT_LOOS) to
                 # provide multiple, architecture-specific
                 # implementations of stuff like memcpy, strcpy etc.
+                pass
+            elif 'NOTYPE_AS_FUNCTION' in os.environ and \
+                    (symbol_type == 'STT_NOTYPE' and symbol['st_shndx'] == 'SHN_UNDEF'):
                 pass
             else:
                 continue
