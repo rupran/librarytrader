@@ -301,6 +301,24 @@ class LibraryStore(BaseStore):
                                                      lambda x: x.split('@@')[0])
 
             if not found:
+                # Hack: search function in all libraries in the store
+                for other_lib in self.get_library_objects():
+                    if function in other_lib.exported_names:
+                        target = other_lib.exported_names
+                    else:
+                        to_search = [x.split('@@')[0] for x in other_lib.exported_names]
+                        if function in to_search:
+                            target = {x.split('@@')[0] : val for x, val in other_lib.exported_names.items()}
+                        else:
+                            continue
+                    target_name = other_lib.fullname
+                    target_addr = target[function]
+                    library.imports[function] = target_name
+                    other_lib.add_export_user(target_addr, library.fullname)
+                    #logging.info('hard search for {}, found at {}:{}'.format(function, target_name, target_addr))
+                    found = True
+
+            if not found:
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
 
