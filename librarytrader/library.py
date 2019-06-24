@@ -264,6 +264,22 @@ class Library:
                     self.exported_names[name] = start
                     self.exported_addrs[start].append(name)
                     size = symbol['st_size']
+                    if symbol.name == '_init':
+                        # Sometimes, the _init symbol only has a size of 1 in
+                        # .dynsym but the section header of the underlying
+                        # .init section can tell us how long the whole section
+                        # is -> take the maximum of those two values.
+                        init_section = self._elffile.get_section(shndx)
+                        if init_section.name == '.init':
+                            # Also add plain '.init' name in addition to
+                            # possibly versioned name
+                            self.exported_addrs[start].append(symbol.name)
+                            size = max(size, init_section['sh_size'])
+                    elif symbol.name == '_fini':
+                        fini_section = self._elffile.get_section(shndx)
+                        if fini_section.name == '.fini':
+                            self.exported_addrs[start].append(symbol.name)
+                            size = max(size, fini_section['sh_size'])
                     if start in self.ranges and self.ranges[start] != size:
                         logging.warning("differing range %s:%x:(%x <-> %x)",
                                         self.fullname, start,

@@ -433,6 +433,12 @@ class LibraryStore(BaseStore):
             elif 'main' in self.get_from_path(name).exported_addrs[addr]:
                 logging.debug('adding %s:main to worklist', name)
                 worklist.add((self.get_from_path(name), addr))
+            elif '_init' in self.get_from_path(name).exported_addrs[addr]:
+                self.get_from_path(name).add_export_user(addr, 'INITUSER')
+                worklist.add((self.get_from_path(name), addr))
+            elif '_fini' in self.get_from_path(name).exported_addrs[addr]:
+                self.get_from_path(name).add_export_user(addr, 'FINIUSER')
+                worklist.add((self.get_from_path(name), addr))
 
 
         logging.debug('initial worklist: %s', str([(l.fullname, a) for l, a in worklist]))
