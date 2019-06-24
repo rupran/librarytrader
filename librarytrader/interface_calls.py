@@ -110,7 +110,7 @@ def find_calls_from_objdump(library, disas):
             elif target in library.local_functions:
                 calls_to_locals.add(target)
 
-    return (calls_to_exports, calls_to_imports, calls_to_locals)
+    return (calls_to_exports, calls_to_imports, calls_to_locals, {}, {}, {}, {})
 
 def disassemble_capstone(library, start, length, cs_obj):
     disassembly = []
@@ -136,6 +136,10 @@ def find_calls_from_capstone(library, disas):
     calls_to_exports = set()
     calls_to_imports = set()
     calls_to_locals = set()
+    indirect_calls = set()
+    imported_object_refs = set()
+    exported_object_refs = set()
+    local_object_refs = set()
     if library.elfheader['e_machine'] == 'EM_AARCH64':
         call_group = capstone.arm64_const.ARM64_GRP_CALL
         jump_group = capstone.arm64_const.ARM64_GRP_JUMP
@@ -151,6 +155,9 @@ def find_calls_from_capstone(library, disas):
         logging.error('Unsupported machine type: %s', library.elfheader['e_machine'])
         return (calls_to_exports, calls_to_imports, calls_to_locals)
 
+    thunk_reg = None
+    thunk_val = None
+
     for instr in disas:
         if instr.group(call_group) or instr.group(jump_group):
             operand = instr.operands[-1]
@@ -160,6 +167,7 @@ def find_calls_from_capstone(library, disas):
                     operand.value.mem.base == capstone.x86.X86_REG_RIP:
                 target = instr.address + operand.value.mem.disp + instr.size
             else:
+                indirect_calls.add((instr.address, '{} {}'.format(instr.mnemonic, instr.op_str)))
                 continue
             if target in library.exported_addrs:
                 calls_to_exports.add(target)
@@ -168,6 +176,21 @@ def find_calls_from_capstone(library, disas):
             elif target in library.imports_plt:
                 calls_to_imports.add(library.imports_plt[target])
             elif target in library.local_functions:
+                # Note: this might only work for gcc-compiled libraries, as
+                # clang sometimes uses the 'call next address + pop <thunk_reg>'
+                # pattern to load the thunk register
+                if '__x86.get_pc_thunk.ax' in library.local_functions[target]:
+                    thunk_reg = capstone.x86.X86_REG_EAX
+                    thunk_val = instr.address + instr.size
+                elif '__x86.get_pc_thunk.bx' in library.local_functions[target]:
+                    thunk_reg = capstone.x86.X86_REG_EBX
+                    thunk_val = instr.address + instr.size
+                elif '__x86.get_pc_thunk.cx' in library.local_functions[target]:
+                    thunk_reg = capstone.x86.X86_REG_ECX
+                    thunk_val = instr.address + instr.size
+                elif '__x86.get_pc_thunk.dx' in library.local_functions[target]:
+                    thunk_reg = capstone.x86.X86_REG_EDX
+                    thunk_val = instr.address + instr.size
                 calls_to_locals.add(target)
             else:
                 # Some handwritten assembly code might jump into a function
@@ -196,19 +219,72 @@ def find_calls_from_capstone(library, disas):
                               library.fullname, instr.address, target, start,
                               size)
         elif mem_tag is not None:
+            mem_through_thunk = None
+            if thunk_reg is not None:
+                read, written = instr.regs_access()
+                if thunk_reg in read:
+                    # If we're adding to the thunk register...
+                    if instr.id == capstone.x86_const.X86_INS_ADD:
+                        target, val = list(instr.operands)
+                        # ... and the addend is an immediate, update the
+                        # current value of the thunk register
+                        if target.type == capstone.x86.X86_OP_REG and \
+                                target.reg == thunk_reg and \
+                                val.type == capstone.x86.X86_OP_IMM:
+                            thunk_val += val.imm
+                            continue
+                    # otherwise, if we're using the thunk register in a mov
+                    # oder lea instruction....
+                    elif instr.id == capstone.x86_const.X86_INS_MOV or \
+                            instr.id == capstone.x86_const.X86_INS_LEA:
+                        target, val = list(instr.operands)
+                        # if the base register is the thunk register, calculate
+                        # and save the accessed address for use below
+                        if val.type == capstone.x86.X86_OP_MEM and \
+                                val.mem.base == thunk_reg:
+                            mem_through_thunk = thunk_val + val.mem.disp
+                # Reset the thunk register if it is written to
+                if thunk_reg in written:
+                    thunk_reg = None
+                    thunk_val = 0
+
             # detect memory references relative to RIP -> function pointers
             for operand in instr.operands:
-                if operand.type != mem_tag:
+                # Immediate accesses can directly be used
+                if operand.type == capstone.x86.X86_OP_IMM:
+                    addr = operand.value.imm - library.load_offset
+                # Accesses relative to RIP need to be calculated with respect
+                # to the address of the current instruction. As the offset is
+                # always relative to the *next* instruction, we also need to
+                # add the size of the current instruction
+                elif operand.type == mem_tag and \
+                        operand.value.mem.base == capstone.x86.X86_REG_RIP:
+                    addr = instr.address + operand.value.mem.disp + instr.size
+                # Lastly, if we had an access through a thunk register, use the
+                # value calculated above and reset the access - otherwise, we
+                # have unnecessary duplicate overhead (for all operands).
+                elif mem_through_thunk:
+                    addr = mem_through_thunk
+                    # Reset mem_through_thunk as we already determined the
+                    # target address in the thunk evaluation above
+                    mem_through_thunk = None
+                else:
                     continue
-                if operand.value.mem.base != capstone.x86.X86_REG_RIP:
-                    continue
-                addr = instr.address + operand.value.mem.disp + instr.size
                 if addr in library.exported_addrs:
                     calls_to_exports.add(addr)
                 elif addr in library.local_functions:
                     calls_to_locals.add(addr)
+                elif addr in library.imports_plt:
+                    calls_to_imports.add(library.imports_plt[addr])
+                elif addr in library.exported_objs:
+                    exported_object_refs.add(addr)
+                elif addr in library.imported_objs:
+                    imported_object_refs.add(addr)
+                elif addr in library.local_objs:
+                    local_object_refs.add(addr)
 
-    return (calls_to_exports, calls_to_imports, calls_to_locals)
+    return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
+            imported_object_refs, exported_object_refs, local_object_refs)
 
 def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     logging.debug('Processing %s', library.fullname)
@@ -217,6 +293,9 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     external_calls = defaultdict(set)
     local_calls = defaultdict(set)
     ranges = library.get_function_ranges()
+    imported_uses = defaultdict(set)
+    exported_uses = defaultdict(set)
+    local_uses = defaultdict(set)
 
     # Disassemble with the right machine type
     arch = capstone.CS_ARCH_X86
@@ -230,22 +309,33 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     cs_obj = capstone.Cs(arch, mode)
     cs_obj.detail = True
 
+    indir = {}
     for start, size in ranges.items():
         disas, resolution_function = disas_function(library, start, size, cs_obj)
-        calls_to_exports, calls_to_imports, calls_to_locals = resolution_function(library, disas)
+        calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls, \
+            uses_of_imports, uses_of_exports, uses_of_locals = resolution_function(library, disas)
         if calls_to_exports:
             internal_calls[start] = calls_to_exports
         if calls_to_imports:
             external_calls[start] = calls_to_imports
         if calls_to_locals:
             local_calls[start] = calls_to_locals
+        if uses_of_imports:
+            imported_uses[start] = uses_of_imports
+        if uses_of_exports:
+            exported_uses[start] = uses_of_exports
+        if uses_of_locals:
+            local_uses[start] = uses_of_locals
+
+        indir[start] = indirect_calls
 
     after = time.time()
     duration = after - before
     logging.info('Thread %d: %s took %.3f s', os.getpid(),
                                               library.fullname,
                                               duration)
-    return (internal_calls, external_calls, local_calls, (after - before))
+    return (internal_calls, external_calls, local_calls, indir,
+            imported_uses, exported_uses, local_uses, (after - before))
 
 def map_wrapper(path):
     try:
@@ -256,12 +346,14 @@ def map_wrapper(path):
             lib.fd = open(lib.fullname, 'rb')
     except Exception as err:
         logging.error('%s: %s', lib.fullname, err)
-        return (None, None, None, None, 0)
+        return (None, None, None, None, None, None, None, None, 0)
 
-    internal_calls, external_calls, local_calls, duration = resolve_calls_in_library(lib)
+    internal_calls, external_calls, local_calls, indirect_calls, \
+        imported_uses, exported_uses, local_uses, duration = resolve_calls_in_library(lib)
     lib.fd.close()
     del lib.fd
-    return (lib.fullname, internal_calls, external_calls, local_calls, duration)
+    return (lib.fullname, internal_calls, external_calls, local_calls, indirect_calls,
+            imported_uses, exported_uses, local_uses, duration)
 
 def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     # Pass by path (-> threads have to reconstruct)
@@ -275,16 +367,33 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     result = pool.map(map_wrapper, libs, chunksize=1)
     pool.close()
 
-    for fullname, internal_calls, external_calls, local_calls, _ in result:
+    indir = {}
+
+    for fullname, internal_calls, external_calls, local_calls, indirect_calls, \
+            imported_uses, exported_uses, local_uses, _ in result:
         store[fullname].internal_calls = internal_calls
         store[fullname].external_calls = external_calls
         store[fullname].local_calls = local_calls
+        store[fullname].import_object_refs = imported_uses
+        store[fullname].export_object_refs = exported_uses
+        store[fullname].local_object_refs = local_uses
+        indir[fullname] = indirect_calls
+
 
     logging.info('... done!')
-    longest = [(v[0], v[4]) for v in sorted(result, key=lambda x: -x[4])]
+    longest = [(v[0], v[8]) for v in sorted(result, key=lambda x: -x[8])]
     logging.info(longest[:20])
-    logging.info('total number of calls: %d', sum(len(v[3].values()) +
-                                                  len(v[2].values()) +
-                                                  len(v[1].values())
-                                                  for v in result))
+    calls = 0
+    for v in result:
+        calls += len(v[1].values())
+        calls += len(v[2].values())
+        calls += len(v[3].values())
+    logging.info('total number of calls: %d', calls)
+#    logging.info('total number of calls: %d', sum(len(v[3].values()) +
+#                                                  len(v[2].values()) +
+#                                                  len(v[1].values())
+#                                                  for v in result))
+    #for p, i in sorted(indir.items(), key=lambda x: -len(x[1])):
+    #    logging.info('indir[%s] = %d', p, len(i))
+    logging.info('indirect calls: %d', sum(len(x) for x in indir.values()))
     return result

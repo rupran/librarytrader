@@ -12,6 +12,7 @@ FILE_PATH = 'test/test_files/'
 RPATH_DIR = FILE_PATH + 'rpath_dir/'
 RPATH_SUB = RPATH_DIR + 'rpath_subdir/'
 LDLIB_DIR = FILE_PATH + 'ld_library_dir/'
+STRUCT_DIR = FILE_PATH + 'structs/'
 LOADERLIKE_DIR = FILE_PATH + 'loaderlike/'
 LDCONFIG_FILE = FILE_PATH + 'ldconfig_out'
 TEST_LIBRARY  = FILE_PATH + 'libmock.so'
@@ -31,6 +32,8 @@ TEST_EXECONLY = FILE_PATH + 'libnot_imported.so'
 TEST_LL       = LOADERLIKE_DIR + 'bin'
 TEST_LL1A     = LOADERLIKE_DIR + 'bin1a'
 TEST_LL2      = LOADERLIKE_DIR + 'bin2'
+TEST_STRUCTS  = STRUCT_DIR + 'structs'
+TEST_LIBSTRUCT = STRUCT_DIR + 'libstructs.so'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -231,7 +234,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -241,7 +244,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -251,7 +254,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
@@ -262,7 +265,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
@@ -388,6 +391,21 @@ class TestLibrary(unittest.TestCase):
             self.assertIn(binary.fullname,
                           store[lib3].get_users_by_name('deeper'))
 
+    def test_6_propagate_calls_through_objects(self):
+        store = LibraryStore()
+
+        for elf in (TEST_STRUCTS, TEST_LIBSTRUCT):
+            store.resolve_libs_recursive_by_path(os.path.abspath(elf))
+
+        resolve_calls(store)
+        store.resolve_all_functions()
+        store.propagate_call_usage()
+
+        library = store.get_from_path(os.path.abspath(TEST_LIBSTRUCT))
+        self.assertIn(os.path.abspath(TEST_STRUCTS),
+                      store[library.fullname].get_users_by_name('helper'))
+        self.assertIn(os.path.abspath(TEST_STRUCTS),
+                      store[library.fullname].get_users_by_name('from_obj'))
 
     def test_7_store_load(self):
         store, binary = create_store_and_lib(TEST_BINARY,

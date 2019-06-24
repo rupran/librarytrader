@@ -207,6 +207,21 @@ class LibraryStore(BaseStore):
         else:
             return self.get_all_reachable_from_executables()
 
+    def _resolve_object_to_functions(self, library, source_object):
+        worklist = set([source_object])
+        worked_on = set()
+        result = set()
+        while worklist:
+            cur_obj = worklist.pop()
+            # Recursive reference to object -> add to worklist and process later
+            if cur_obj in library.object_to_objects and cur_obj not in worked_on:
+                worklist.update(library.object_to_objects[cur_obj])
+            # Direct reference to a function -> add to result
+            if cur_obj in library.object_to_functions:
+                result.update(library.object_to_functions[cur_obj])
+            worked_on.add(cur_obj)
+        return result
+
     def get_transitive_calls(self, library, function, cache=None, working_on=None):
         if cache is None:
             cache = {}
@@ -250,6 +265,40 @@ class LibraryStore(BaseStore):
                 callee_addr = target_lib.find_export(callee)
                 local_cache.add((callee_addr, target_lib))
 
+        # Additionally, add local references through objects...
+        for object_refs in (library.export_object_refs, library.local_object_refs):
+            if function in object_refs:
+                working_on.add(function)
+                for intermediate_object in object_refs[function]:
+                    for callee in self._resolve_object_to_functions(library, intermediate_object):
+                        local_cache.add((callee, library))
+                        if callee in working_on:
+                            continue
+                        subcalls = self.get_transitive_calls(library, callee, cache, working_on)
+                        local_cache.update(subcalls)
+
+                working_on.remove(function)
+
+        # ... and references to imported objects
+        if function in library.import_object_refs:
+            for callee in library.import_object_refs[function]:
+                if callee in library.imported_objs:
+                    name = library.imported_objs[callee]
+                    target_lib = self.get_from_path(library.imported_objs_locations[name])
+                else:
+                    continue
+                callee_addr = target_lib.find_object(name)
+                if callee_addr is None:
+                    logging.debug('no addr found for object %s:%s, '\
+                                  'referenced from %s:%x', target_lib.fullname,
+                                  name, library.fullname, function)
+                    continue
+
+                logging.debug('transitive call to %x through object %s from %s',
+                              callee_addr, name, library.fullname)
+                for dependent_function in target_lib.object_to_functions[callee_addr]:
+                    local_cache.add((dependent_function, target_lib))
+
         cache[libname][function] = local_cache
         return cache[libname][function]
 
@@ -274,6 +323,30 @@ class LibraryStore(BaseStore):
                         users[(imp_lib.fullname, addr)].add(library.fullname)
 
                 logging.debug('|- found \'%s\' in %s', function, needed_path)
+                return True
+        return False
+
+    def _find_imported_object(self, obj, library, map_func=None, users=None, add=True):
+        for needed_name, needed_path in library.all_imported_libs.items():
+            imp_lib = self.get_from_path(needed_path)
+            if not imp_lib:
+                logging.warning('|- data for \'%s\' not available in %s!',
+                                needed_name, library.fullname)
+                continue
+
+            exported_objs = imp_lib.exported_obj_names
+            if map_func:
+                exported_objs = {map_func(key): val for key, val in
+                                 imp_lib.exported_obj_names.items()}
+            if obj in exported_objs:
+                library.imported_objs_locations[obj] = needed_path
+                if add:
+                    addr = exported_objs[obj]
+                    imp_lib.add_object_user(addr, library.fullname)
+                    if users is not None:
+                        users[(imp_lib.fullname, addr)].add(library.fullname)
+
+                logging.debug('|- found object \'%s\' in %s', obj, needed_path)
                 return True
         return False
 
@@ -321,6 +394,15 @@ class LibraryStore(BaseStore):
             if not found:
                 logging.warning('|- did not find function \'%s\' from %s',
                                 function, library.fullname)
+
+        for obj in library.imported_objs_locations:
+            found = self._find_imported_object(obj, library)
+            if not found:
+                found = self._find_imported_object(obj, library,
+                                                   lambda x: x.split('@@')[0])
+            if not found:
+                logging.warning('|- did not find object \'%s\' from %s',
+                                obj, library.fullname)
 
     def resolve_functions_loaderlike(self, library, force_add_to_exports=False):
         users = collections.defaultdict(set)
@@ -536,7 +618,20 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "local_functions")
                 dump_dict_with_set_value(lib_dict, content, "local_calls")
                 dump_dict_with_set_value(lib_dict, content, "local_users")
+                dump_ordered_dict_as_list(lib_dict, content, "exported_objs")
+                dump_ordered_dict_as_list(lib_dict, content, "exported_obj_names")
+                dump_ordered_dict_as_list(lib_dict, content, "imported_objs")
+                dump_ordered_dict_as_list(lib_dict, content, "imported_objs_locations")
+                dump_ordered_dict_as_list(lib_dict, content, "local_objs")
+                dump_dict_with_set_value(lib_dict, content, "object_to_functions")
+                dump_dict_with_set_value(lib_dict, content, "object_to_objects")
+                dump_dict_with_set_value(lib_dict, content, "export_object_refs")
+                dump_dict_with_set_value(lib_dict, content, "local_object_refs")
+                dump_dict_with_set_value(lib_dict, content, "import_object_refs")
+                dump_dict_with_set_value(lib_dict, content, "object_users")
+
                 lib_dict["ranges"] = content.ranges
+                lib_dict["object_ranges"] = content.object_ranges
 
             output[path] = lib_dict
 
@@ -588,7 +683,20 @@ class LibraryStore(BaseStore):
                         library.local_functions[int(addr)] = names
                     load_dict_with_set_values(content, library, "local_calls", int)
                     load_dict_with_set_values(content, library, "local_users", int)
+
+                    load_ordered_dict_from_list(content, library, "exported_objs")
+                    load_ordered_dict_from_list(content, library, "exported_obj_names")
+                    load_ordered_dict_from_list(content, library, "imported_objs")
+                    load_ordered_dict_from_list(content, library, "imported_objs_locations")
+                    load_ordered_dict_from_list(content, library, "local_objs")
+                    load_dict_with_set_values(content, library, "object_to_functions", int)
+                    load_dict_with_set_values(content, library, "export_object_refs", int)
+                    load_dict_with_set_values(content, library, "local_object_refs", int)
+                    load_dict_with_set_values(content, library, "import_object_refs", int)
+                    load_dict_with_set_values(content, library, "object_users", int)
+
                     library.ranges = {int(key):value for key, value in content["ranges"].items()}
+                    library.object_ranges = {int(key):value for key, value in content["object_ranges"].items()}
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     self._add_library(path, library)
 

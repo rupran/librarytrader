@@ -18,6 +18,7 @@
 import collections
 import logging
 import os
+import struct
 
 from elftools.common.exceptions import ELFError
 from elftools.elf.dynamic import DynamicSegment
@@ -89,6 +90,33 @@ class Library:
         # needed_libs: name from DT_NEEDED -> path of library
         self.needed_libs = collections.OrderedDict()
         self.all_imported_libs = collections.OrderedDict()
+
+        # defined objects: address -> name
+        self.exported_objs = collections.defaultdict(list)
+        # defined objects: name -> address
+        self.exported_obj_names = collections.OrderedDict()
+        # imported objects: address -> name
+        self.imported_objs = collections.OrderedDict()
+        # imported objects: name -> path to offering library
+        self.imported_objs_locations = collections.OrderedDict()
+        # local defined objects: address -> name
+        self.local_objs = collections.defaultdict(list)
+        # TODO: names for local objects are not unique!
+        # address ranges for objects
+        self.object_ranges = {}
+        # outgoing functions from objects (object address -> list of addresses)
+        self.object_to_functions = collections.defaultdict(set)
+        # outgoing objects from objects (object address -> list of addresses)
+        self.object_to_objects = collections.defaultdict(set)
+        # function references to objects (function address -> list of objects)
+        # these dictionaries are filled from the disassembly step
+        self.export_object_refs = collections.defaultdict(set)
+        self.local_object_refs = collections.defaultdict(set)
+        self.import_object_refs = collections.defaultdict(set)
+
+        # external users of objects: address -> list of referencing library paths
+        self.object_users = collections.OrderedDict()
+
         self.rpaths = []
         self.runpaths = []
         self.soname = None
@@ -125,6 +153,21 @@ class Library:
                 pass
             elif 'NOTYPE_AS_FUNCTION' in os.environ and \
                     (symbol_type == 'STT_NOTYPE' and symbol['st_shndx'] == 'SHN_UNDEF'):
+                pass
+            else:
+                continue
+
+            retval.append((idx, symbol))
+
+        return retval
+
+    def _get_object_symbols(self, section):
+        retval = []
+
+        for idx, symbol in enumerate(section.iter_symbols()):
+            symbol_type = symbol['st_info']['type']
+
+            if symbol_type == 'STT_OBJECT':
                 pass
             else:
                 continue
@@ -286,6 +329,27 @@ class Library:
                                         self.ranges[start], size)
                         size = max(self.ranges[start], size)
                     self.ranges[start] = size
+
+        for idx, symbol in self._get_object_symbols(section):
+            shndx = symbol['st_shndx']
+            symbol_bind = symbol['st_info']['bind']
+            if shndx == 'SHN_UNDEF':
+                name = self._get_versioned_name(symbol, idx)
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                pass
+                #TODO: what to do here?
+                #self.imported_objs_locations[name] = None
+            else:
+                addr = symbol['st_value']
+                if not addr:
+                    continue
+                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK':
+                    name = self._get_versioned_name(symbol, idx)
+                    size = symbol['st_size']
+                    self.exported_objs[addr].append(name)
+                    self.exported_obj_names[name] = addr
+                    self.object_ranges[addr] = size
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -468,24 +532,96 @@ class Library:
             return
         if self.elfheader['e_machine'] == 'EM_386':
             target_reloc_type = ENUM_RELOC_TYPE_i386['R_386_GLOB_DAT']
+            fptr_reloc_type = ENUM_RELOC_TYPE_i386['R_386_RELATIVE']
+            ptr_reloc_type = ENUM_RELOC_TYPE_i386['R_386_32']
         elif self.elfheader['e_machine'] == 'EM_X86_64':
             target_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_GLOB_DAT']
+            fptr_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_RELATIVE']
+            ptr_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_64']
         else:
             target_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_GLOB_DAT']
+            fptr_reloc_type = None
+            ptr_reloc_type = None
         for reloc in dynrel.iter_relocations():
             got_offset = reloc['r_offset']
             symbol_idx = reloc['r_info_sym']
             reloc_type = reloc['r_info_type']
-            if reloc_type == target_reloc_type:
+            if reloc_type in (target_reloc_type, ptr_reloc_type):
                 symbol = dynsym.get_symbol(symbol_idx)
-                if symbol['st_info']['type'] != 'STT_FUNC':
+                obj = False
+                if symbol['st_info']['type'] == 'STT_OBJECT':
+                    obj = True
+                if not obj and symbol['st_info']['type'] != 'STT_FUNC':
                     continue
+
                 if symbol['st_shndx'] == 'SHN_UNDEF':
-                    self.imports_plt[got_offset] = \
-                        self._get_versioned_name(symbol, symbol_idx)
+                    if obj:
+                        target = self.imported_objs
+                    else:
+                        target = self.imports_plt
+                    target[got_offset] = self._get_versioned_name(symbol,
+                                                                  symbol_idx)
+                    if obj:
+                        self.imported_objs_locations[target[got_offset]] = None
                 else:
-                    self.exports_plt[got_offset] = \
-                        self._get_symbol_offset(symbol)
+                    # Relocations might point into the middle of an object,
+                    # so we fix up the offset to the beginning of the
+                    # corresponding object to mark the reference
+                    start_of_object = True
+                    for start, size in self.object_ranges.items():
+                        if start != got_offset and got_offset in range(start, start + size):
+                            logging.debug('fix offset %x to object at %x',
+                                          got_offset, start)
+                            got_offset = start
+                            start_of_object = False
+                            break
+
+                    if obj:
+                        # References from the code might be to relocation address
+                        # in the GOT, so we add a pseudo entry to exported_objs
+                        # which represents the underlying symbol. But we only
+                        # need to do this if the relocation did not point into
+                        # another object and the name did not exist previously
+                        if start_of_object and got_offset not in self.exported_objs:
+                            self.exported_objs[got_offset].append(self._get_versioned_name(symbol, symbol_idx))
+                        # Additionally, we mark a connection between the GOT
+                        # enty and the object behind it
+                        self.object_to_objects[got_offset].add(symbol['st_value'])
+                    else:
+                        self.object_to_functions[got_offset].add(self._get_symbol_offset(symbol))
+#                        self.exports_plt[got_offset] = self._get_symbol_offset(symbol)
+
+        # This needs to be in a separate loop as the other relocation types
+        # might have added entries to self.exported_objs, and the relocations
+        # processed in this loop might reference such new entries.
+        for reloc in dynrel.iter_relocations():
+            got_offset = reloc['r_offset']
+            reloc_type = reloc['r_info_type']
+            if reloc_type == fptr_reloc_type:
+                # R_386_RELATIVE (or more precisely, DT_REL type) relocations
+                # store an implicit addend at the location of the relocation
+                # entry so we need to access that offset
+                if self.elfheader['e_machine'] == 'EM_386':
+                    off = next(self._elffile.address_offsets(got_offset))
+                    self.fd.seek(off)
+                    location = struct.unpack('<I', self.fd.read(4))[0]
+                    logging.debug('Relocation for offset %x has addend %x',
+                                  got_offset, location)
+                else:
+                    location = reloc['r_addend']
+
+                for start, size in self.object_ranges.items():
+                    if got_offset not in range(start, start + size):
+                        continue
+
+                    if location in self.exported_addrs or \
+                            location in self.local_functions:
+                        self.object_to_functions[start].add(location)
+                    elif location in self.exported_objs or \
+                            location in self.local_objs:
+                        self.object_to_objects[start].add(location)
+                    break
+
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
@@ -568,6 +704,32 @@ class Library:
                         self.local_functions[start].append(name)
                         self.local_users[start] = set()
 
+        for idx, symbol in self._get_object_symbols(symtab):
+            shndx = symbol['st_shndx']
+            symbol_bind = symbol['st_info']['bind']
+            if shndx == 'SHN_UNDEF':
+                name = self._get_versioned_name(symbol, idx)
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                pass
+                #TODO: what to do here?
+                #self.imported_objs_locations[name] = None
+            else:
+                addr = symbol['st_value']
+                if not addr:
+                    continue
+                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK':
+                    name = symbol.name
+                    size = symbol['st_size']
+                    if addr not in self.exported_objs:
+                        self.exported_objs[addr].append(name)
+                        self.exported_obj_names[name] = addr
+                        self.object_ranges[addr] = size
+                elif symbol_bind == 'STB_LOCAL':
+                    self.local_objs[addr].append(symbol.name)
+                    # Names are not unique for local objects!
+                    self.object_ranges[addr] = symbol['st_size']
+
         if external_elf:
             external_elf.stream.close()
             del external_elf
@@ -578,8 +740,8 @@ class Library:
         self.parse_dynsym()
         self.parse_plt()
         self.parse_plt_got()
-        self.parse_rela_dyn()
         self.parse_symtab()
+        self.parse_rela_dyn()
         if self.entrypoint:
             self.function_addrs.add(self.entrypoint)
         if release:
@@ -616,11 +778,29 @@ class Library:
             return True
         return False
 
+    def add_object_user(self, addr, user_path):
+        if addr not in self.object_users:
+            self.object_users[addr] = set()
+        if user_path not in self.object_users[addr]:
+            self.object_users[addr].add(user_path)
+
     def get_users_by_name(self, name):
         addr = self.find_export(name)
         if not addr:
             return []
         return self.export_users.get(addr, [])
+
+    def find_object(self, requested_name):
+        if requested_name in self.exported_obj_names:
+            return self.exported_obj_names[requested_name]
+        for name, addr in self.exported_obj_names.items():
+            if name.split('@@')[0] == requested_name:
+                return addr
+
+        if requested_name.split('@@')[0] in self.exported_obj_names:
+            return self.exported_obj_names[requested_name.split('@@')[0]]
+        return None
+
 
     def find_export(self, requested_name):
         # Direct match, name + version

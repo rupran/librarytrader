@@ -7,7 +7,7 @@ LOADERDIR=loaderlike
 TARGETS=user libmock.so libmock_plt.so librpath_one.so \
 	$(RPATH_DIR)/librpath_two.so $(RPATH_SUBDIR)/librpath_three.so \
 	$(RPATH_SUBDIR)/librunpath.so $(RPATH_DIR)/libldd_search.so \
-	libnoldconfig.so libnot_imported.so \
+	libnoldconfig.so libnot_imported.so structs/structs structs/libstructs.so \
 	$(addprefix $(LOADERDIR)/, bin bin1a bin2 lib1a.so lib1.so lib2.so lib3.so)
 
 .PHONY: all clean
@@ -53,6 +53,12 @@ libnoldconfig.so: noldconfig.c
 
 libnot_imported.so: not_imported.c libmock.so
 	$(CC) $(CFLAGS) -o $@ $< -L. -lmock
+
+structs/libstructs.so: structs/libstructs.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+structs/structs: structs/structs.c structs/libstructs.so
+	$(CC) -Wl,-rpath='$$ORIGIN',--enable-new-dtags -Lstructs -o $@ $< -lstructs
 
 $(LOADERDIR)/lib3.so: $(LOADERDIR)/lib3.c
 	$(CC) $(CFLAGS) -o $@ $<
