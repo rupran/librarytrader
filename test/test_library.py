@@ -34,6 +34,8 @@ TEST_LL1A     = LOADERLIKE_DIR + 'bin1a'
 TEST_LL2      = LOADERLIKE_DIR + 'bin2'
 TEST_STRUCTS  = STRUCT_DIR + 'structs'
 TEST_LIBSTRUCT = STRUCT_DIR + 'libstructs.so'
+TEST_STRUCTS32 = STRUCT_DIR + 'structs32'
+TEST_LIBSTRUCT32 = STRUCT_DIR + 'libstructs32.so'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -405,6 +407,22 @@ class TestLibrary(unittest.TestCase):
         self.assertIn(os.path.abspath(TEST_STRUCTS),
                       store[library.fullname].get_users_by_name('helper'))
         self.assertIn(os.path.abspath(TEST_STRUCTS),
+                      store[library.fullname].get_users_by_name('from_obj'))
+
+    def test_6_propagate_calls_through_objects_32_bit(self):
+        store = LibraryStore()
+
+        for elf in (TEST_STRUCTS32, TEST_LIBSTRUCT32):
+            store.resolve_libs_recursive_by_path(os.path.abspath(elf))
+
+        resolve_calls(store)
+        store.resolve_all_functions()
+        store.propagate_call_usage()
+
+        library = store.get_from_path(os.path.abspath(TEST_LIBSTRUCT32))
+        self.assertIn(os.path.abspath(TEST_STRUCTS32),
+                      store[library.fullname].get_users_by_name('helper'))
+        self.assertIn(os.path.abspath(TEST_STRUCTS32),
                       store[library.fullname].get_users_by_name('from_obj'))
 
     def test_7_store_load(self):
