@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
+import bisect
 import collections
 import logging
 import os
@@ -544,6 +545,8 @@ class Library:
             target_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_GLOB_DAT']
             fptr_reloc_type = None
             ptr_reloc_type = None
+
+        sorted_obj_ranges = sorted(self.object_ranges.keys())
         for reloc in dynrel.iter_relocations():
             got_offset = reloc['r_offset']
             symbol_idx = reloc['r_info_sym']
@@ -570,13 +573,15 @@ class Library:
                     # so we fix up the offset to the beginning of the
                     # corresponding object to mark the reference
                     start_of_object = True
-                    for start, size in self.object_ranges.items():
+                    ins_point = bisect.bisect(sorted_obj_ranges, got_offset)
+                    if ins_point != 0:
+                        left_offset = sorted_obj_ranges[ins_point-1]
+                        start, size = (left_offset, self.object_ranges[left_offset])
                         if start != got_offset and got_offset in range(start, start + size):
                             logging.debug('fix offset %x to object at %x',
                                           got_offset, start)
                             got_offset = start
                             start_of_object = False
-                            break
 
                     if obj:
                         # References from the code might be to relocation address
@@ -612,17 +617,18 @@ class Library:
                 else:
                     location = reloc['r_addend']
 
-                for start, size in self.object_ranges.items():
+                ins_point = bisect.bisect(sorted_obj_ranges, got_offset)
+                if ins_point != 0:
+                    left_offset = sorted_obj_ranges[ins_point-1]
+                    start, size = (left_offset, self.object_ranges[left_offset])
                     if got_offset not in range(start, start + size):
                         continue
-
                     if location in self.exported_addrs or \
                             location in self.local_functions:
                         self.object_to_functions[start].add(location)
                     elif location in self.exported_objs or \
                             location in self.local_objs:
                         self.object_to_objects[start].add(location)
-                    break
 
 
     def parse_versions(self):
