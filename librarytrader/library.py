@@ -344,7 +344,9 @@ class Library:
                 addr = symbol['st_value']
                 if not addr:
                     continue
-                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK':
+                # STB_LOOS objects are of type STB_GNU_UNIQUE for SYSV binaries
+                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK' or \
+                        symbol_bind == 'STB_LOOS':
                     name = self._get_versioned_name(symbol, idx)
                     size = symbol['st_size']
                     self.exported_objs[addr].append(name)
@@ -718,7 +720,8 @@ class Library:
                 addr = symbol['st_value']
                 if not addr:
                     continue
-                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK':
+                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK' or \
+                        symbol_bind == 'STB_LOOS':
                     name = symbol.name
                     size = symbol['st_size']
                     if addr not in self.exported_objs:
