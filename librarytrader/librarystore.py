@@ -33,6 +33,8 @@ class LibraryStore(BaseStore):
         super(LibraryStore, self).__init__()
         self._entrylist = []
         self.resolver = LDResolve(ldconfig_file)
+        self._object_cache = {}
+        self._callee_cache = {}
 
     def _get_or_create_library(self, path):
         link_path = None
@@ -222,17 +224,15 @@ class LibraryStore(BaseStore):
             worked_on.add(cur_obj)
         return result
 
-    def get_transitive_calls(self, library, function, cache=None, working_on=None):
-        if cache is None:
-            cache = {}
+    def get_transitive_calls(self, library, function, working_on=None):
         if working_on is None:
             working_on = set()
 
         libname = library.fullname
-        if libname not in cache:
-            cache[libname] = {}
-        if function in cache[libname]:
-            return cache[libname][function]
+        if libname not in self._callee_cache:
+            self._callee_cache[libname] = {}
+        if function in self._callee_cache[libname]:
+            return self._callee_cache[libname][function]
 
         # No cache hit, calculate it
         local_cache = set()
@@ -245,8 +245,7 @@ class LibraryStore(BaseStore):
                     local_cache.add((callee, library))
                     if callee in working_on:
                         continue
-                    subcalls = self.get_transitive_calls(library, callee, cache,
-                                                         working_on)
+                    subcalls = self.get_transitive_calls(library, callee, working_on)
                     local_cache.update(subcalls)
                 working_on.remove(function)
 
@@ -270,11 +269,14 @@ class LibraryStore(BaseStore):
             if function in object_refs:
                 working_on.add(function)
                 for intermediate_object in object_refs[function]:
-                    for callee in self._resolve_object_to_functions(library, intermediate_object):
+                    if (intermediate_object, library) not in self._object_cache:
+                        self._object_cache[(intermediate_object, library)] = \
+                            self._resolve_object_to_functions(library, intermediate_object)
+                    for callee in self._object_cache[(intermediate_object, library)]:
                         local_cache.add((callee, library))
                         if callee in working_on:
                             continue
-                        subcalls = self.get_transitive_calls(library, callee, cache, working_on)
+                        subcalls = self.get_transitive_calls(library, callee, working_on)
                         local_cache.update(subcalls)
 
                 working_on.remove(function)
@@ -303,8 +305,8 @@ class LibraryStore(BaseStore):
                 for dependent_function in target_lib.object_to_functions[callee_addr]:
                     local_cache.add((dependent_function, target_lib))
 
-        cache[libname][function] = local_cache
-        return cache[libname][function]
+        self._callee_cache[libname][function] = local_cache
+        return self._callee_cache[libname][function]
 
     def _find_imported_function(self, function, library, map_func=None, users=None, add=True):
         for needed_name, needed_path in library.all_imported_libs.items():
