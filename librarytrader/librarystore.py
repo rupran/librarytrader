@@ -287,6 +287,10 @@ class LibraryStore(BaseStore):
                     target_lib = self.get_from_path(library.imported_objs_locations[name])
                 else:
                     continue
+                if target_lib is None:
+                    logging.warning('%s: reference to unknown target for object %s',
+                                    libname, callee)
+                    continue
                 callee_addr = target_lib.find_object(name)
                 if callee_addr is None:
                     logging.debug('no addr found for object %s:%s, '\
