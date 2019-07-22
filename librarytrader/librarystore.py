@@ -243,6 +243,8 @@ class LibraryStore(BaseStore):
                 working_on.add(function)
                 for callee in calls[function]:
                     local_cache.add((callee, library))
+                    logging.debug('internal call: %x -> %x in %s', function,
+                                  callee, library.fullname)
                     if callee in working_on:
                         continue
                     subcalls = self.get_transitive_calls(library, callee, working_on)
@@ -274,6 +276,8 @@ class LibraryStore(BaseStore):
                             self._resolve_object_to_functions(library, intermediate_object)
                     for callee in self._object_cache[(intermediate_object, library)]:
                         local_cache.add((callee, library))
+                        logging.debug('transitive internal call to %x through object %d in %s',
+                                      callee, intermediate_object, library.fullname)
                         if callee in working_on:
                             continue
                         subcalls = self.get_transitive_calls(library, callee, working_on)
@@ -300,9 +304,10 @@ class LibraryStore(BaseStore):
                                   name, library.fullname, function)
                     continue
 
-                logging.debug('transitive call to %x through object %s from %s',
-                              callee_addr, name, library.fullname)
                 for dependent_function in target_lib.object_to_functions[callee_addr]:
+                    logging.debug('transitive call to %s:%x through object %s from %s',
+                                  target_lib.fullname, dependent_function, name,
+                                  library.fullname)
                     local_cache.add((dependent_function, target_lib))
 
         self._callee_cache[libname][function] = local_cache
@@ -394,7 +399,8 @@ class LibraryStore(BaseStore):
                     target_addr = target[function]
                     library.imports[function] = target_name
                     other_lib.add_export_user(target_addr, library.fullname)
-                    #logging.info('hard search for {}, found at {}:{}'.format(function, target_name, target_addr))
+                    logging.info('hard search for %s, found at %s:%x', function,
+                                 target_name, target_addr)
                     found = True
 
             if not found:
