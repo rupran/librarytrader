@@ -198,7 +198,7 @@ class Library:
         for segment in self._elffile.iter_segments():
             if segment['p_type'] == 'PT_LOAD' and segment['p_flags'] == 0x5:
                 text_start = segment['p_offset']
-                text_end = segment['p_filesz']
+                text_end = text_start + segment['p_filesz']
                 break
 
         self.fd.seek(text_start)
@@ -218,7 +218,7 @@ class Library:
             logging.error('unsupported architecture for .plt search')
             return None
 
-        cur_offset = 0
+        cur_offset = text_start
         plt_offset = None
         read_bytes = self.fd.read(read_increment)
         while cur_offset < text_end:
