@@ -121,6 +121,8 @@ class Library:
         self.rpaths = []
         self.runpaths = []
         self.soname = None
+        self.init_functions = []
+        self.fini_functions = []
 
         self.ranges = {}
         self.external_calls = {}
@@ -320,11 +322,15 @@ class Library:
                             # possibly versioned name
                             self.exported_addrs[start].append(symbol.name)
                             size = max(size, init_section['sh_size'])
+                        if start not in self.init_functions:
+                            self.init_functions.append(start)
                     elif symbol.name == '_fini':
                         fini_section = self._elffile.get_section(shndx)
                         if fini_section.name == '.fini':
                             self.exported_addrs[start].append(symbol.name)
                             size = max(size, fini_section['sh_size'])
+                        if start not in self.fini_functions:
+                            self.fini_functions.append(start)
                     if start in self.ranges and self.ranges[start] != size:
                         logging.warning("differing range %s:%x:(%x <-> %x)",
                                         self.fullname, start,
@@ -367,6 +373,11 @@ class Library:
         if not section:
             return
 
+        init_array = None
+        init_arraysz = 0
+        fini_array = None
+        fini_arraysz = 0
+
         for tag in section.iter_tags():
             if tag.entry.d_tag == 'DT_NEEDED':
                 if isinstance(tag.needed, bytes):
@@ -393,6 +404,35 @@ class Library:
                 if tag.entry.d_val & 0x8000000:
                     logging.info('\'%s\' is PIE', self.fullname)
                     self.entrypoint = self.elfheader['e_entry']
+            elif tag.entry.d_tag == 'DT_INIT_ARRAY':
+                init_array = next(self._elffile.address_offsets(tag.entry.d_ptr))
+            elif tag.entry.d_tag == 'DT_INIT_ARRAYSZ':
+                init_arraysz = tag.entry.d_val
+            elif tag.entry.d_tag == 'DT_FINI_ARRAY':
+                fini_array = next(self._elffile.address_offsets(tag.entry.d_ptr))
+            elif tag.entry.d_tag == 'DT_FINI_ARRAYSZ':
+                fini_arraysz = tag.entry.d_val
+
+        def _process_function_array(array, array_size, target_list):
+            if self._elffile.elfclass == 32:
+                fmt = '<I'
+                pointer_size = 4
+            else:
+                fmt = '<Q'
+                pointer_size = 8
+            cur_offset = array
+            while cur_offset < array + array_size:
+                self.fd.seek(cur_offset)
+                target_list.append(struct.unpack(fmt, self.fd.read(pointer_size))[0])
+                cur_offset += pointer_size
+
+        if init_array is not None and init_arraysz != 0:
+            logging.debug('DT_INIT_ARRAY at %x, length %d', init_array, init_arraysz)
+            _process_function_array(init_array, init_arraysz, self.init_functions)
+
+        if fini_array is not None and fini_arraysz != 0:
+            logging.debug('DT_FINI_ARRAY at %x, length %d', fini_array, fini_arraysz)
+            _process_function_array(fini_array, fini_arraysz, self.fini_functions)
 
     def parse_plt(self):
         if self.elfheader['e_machine'] == 'EM_386':
@@ -725,6 +765,8 @@ class Library:
                         self.exported_names[name] = start
                         self.exported_addrs[start].append(name)
                     else:
+                        if name == '_init':
+                            self.init_functions.append(start)
                         self.local_functions[start].append(name)
                         self.local_users[start] = set()
 

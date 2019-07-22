@@ -531,21 +531,27 @@ class LibraryStore(BaseStore):
                 for addr, users in lib.local_users.items():
                     user_dict[(lib.fullname, addr)] = users.copy()
 
-        # Starting points are all referenced exports
+        # Starting points are all referenced exports...
         worklist = set()
         for (name, addr), user_libs in user_dict.items():
             if user_libs:
                 worklist.add((self.get_from_path(name), addr))
-            elif 'main' in self.get_from_path(name).exported_addrs[addr]:
-                logging.debug('adding %s:main to worklist', name)
-                worklist.add((self.get_from_path(name), addr))
-            elif '_init' in self.get_from_path(name).exported_addrs[addr]:
-                self.get_from_path(name).add_export_user(addr, 'INITUSER')
-                worklist.add((self.get_from_path(name), addr))
-            elif '_fini' in self.get_from_path(name).exported_addrs[addr]:
-                self.get_from_path(name).add_export_user(addr, 'FINIUSER')
-                worklist.add((self.get_from_path(name), addr))
-
+        for lib in set(name for name, addr in user_dict.keys()):
+            library_object = self.get_from_path(lib)
+            # ... the main function...
+            if 'main' in library_object.exported_addrs[addr]:
+                logging.debug('adding %s:main to worklist', lib)
+                worklist.add((library_object, addr))
+            # ... all initialization functions...
+            for addr in library_object.init_functions:
+                library_object.add_export_user(addr, 'INITUSER')
+                worklist.add((library_object, addr))
+                user_dict[(lib, addr)].add('INITUSER')
+            # ... and ll deconstruction functions.
+            for addr in library_object.fini_functions:
+                library_object.add_export_user(addr, 'FINIUSER')
+                worklist.add((library_object, addr))
+                user_dict[(lib, addr)].add('FINIUSER')
 
         logging.debug('initial worklist: %s', str([(l.fullname, a) for l, a in worklist]))
 
@@ -635,6 +641,8 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "local_object_refs")
                 dump_dict_with_set_value(lib_dict, content, "import_object_refs")
                 dump_dict_with_set_value(lib_dict, content, "object_users")
+                lib_dict["init_functions"] = content.init_functions
+                lib_dict["fini_functions"] = content.fini_functions
 
                 lib_dict["ranges"] = content.ranges
                 lib_dict["object_ranges"] = content.object_ranges
@@ -700,6 +708,8 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "local_object_refs", int)
                     load_dict_with_set_values(content, library, "import_object_refs", int)
                     load_dict_with_set_values(content, library, "object_users", int)
+                    library.init_functions = content["init_functions"]
+                    library.fini_functions = content["fini_functions"]
 
                     library.ranges = {int(key):value for key, value in content["ranges"].items()}
                     library.object_ranges = {int(key):value for key, value in content["object_ranges"].items()}
