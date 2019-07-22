@@ -205,6 +205,7 @@ class Library:
         read_increment = 16
         plt_entsize = 16
         plt_addralign = 16
+
         if self.elfheader['e_machine'] == 'EM_X86_64':
             match = lambda x: x[0:2] == b'\xff\x35' and x[6:8] == b'\xff\x25'
         elif self.elfheader['e_machine'] == 'EM_386':
@@ -428,7 +429,22 @@ class Library:
 
                 symbol = None
                 symbol_index = reloc['r_info_sym']
-                if hasattr(dynsym, 'get_symbol'):
+                if self.elfheader['e_machine'] == 'EM_X86_64' and \
+                        reloc['r_info_type'] == ENUM_RELOC_TYPE_x64['R_X86_64_IRELATIVE']:
+                    # Locate a pyelftools Symbol object with the an offset equal
+                    # to reloc['r_addend'], based on the symbol names. This is
+                    # quite paranoid, for regular cases the following should
+                    # be enough, but with symbol versioning get_symbol_by_name()
+                    # could return different offsets for the same function name:
+                    # symbol = dynsym.get_symbol_by_name(unversioned_names[0])[0]
+                    sym_names = self.exported_addrs[reloc['r_addend']]
+                    if sym_names:
+                        unversioned_names = [x.split('@@')[0] for x in sym_names]
+                        symbols = [sym for name in unversioned_names
+                                   for sym in dynsym.get_symbol_by_name(name)]
+                        symbol = next(sym for sym in symbols
+                                      if self._get_symbol_offset(sym) == reloc['r_addend'])
+                elif hasattr(dynsym, 'get_symbol'):
                     if symbol_index < dynsym.num_symbols():
                         symbol = dynsym.get_symbol(symbol_index)
                 else:
