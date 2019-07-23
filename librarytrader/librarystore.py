@@ -494,6 +494,12 @@ class LibraryStore(BaseStore):
                 else:
                     continue
                 already_defined[name] = (cur_lib.fullname, addr, cur_lib.export_bind[name])
+            for addr in cur_lib.init_functions:
+                cur_lib.add_export_user(addr, 'INITUSER')
+                users[(cur_lib.fullname, addr)].add('INITUSER')
+            for addr in cur_lib.fini_functions:
+                cur_lib.add_export_user(addr, 'FINIUSER')
+                users[(cur_lib.fullname, addr)].add('FINIUSER')
 
         return users, overload
 
