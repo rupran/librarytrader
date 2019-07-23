@@ -36,6 +36,7 @@ TEST_STRUCTS  = STRUCT_DIR + 'structs'
 TEST_LIBSTRUCT = STRUCT_DIR + 'libstructs.so'
 TEST_STRUCTS32 = STRUCT_DIR + 'structs32'
 TEST_LIBSTRUCT32 = STRUCT_DIR + 'libstructs32.so'
+TEST_INITFINI = FILE_PATH + 'libinit_fini.so'
 
 def create_store_and_lib(libpath=TEST_LIBRARY, parse=False,
                          resolve_libs_recursive=False, call_resolve=False):
@@ -472,6 +473,23 @@ class TestLibrary(unittest.TestCase):
         searched_plt = library._create_mock_rela_plt()
         section_plt = library._elffile.get_section_by_name('.rela.plt')
         self.assertEquals(searched_plt['sh_offset'], section_plt['sh_offset'])
+
+    def test_8_init_fini(self):
+        store, library = create_store_and_lib(TEST_INITFINI,
+                                              resolve_libs_recursive=True,
+                                              call_resolve=True)
+
+        store.resolve_all_functions(all_entries=True)
+        store.propagate_call_usage(all_entries=True)
+
+        library = store.get_from_path(os.path.abspath(TEST_INITFINI))
+        # from_init is only called from func_init
+        self.assertIn('INITUSER',
+                      store[library.fullname].get_users_by_name('from_init'))
+        # from_fini is only called from func_fini
+        self.assertIn('FINIUSER',
+                      store[library.fullname].get_users_by_name('from_fini'))
+
 
 if __name__ == '__main__':
     unittest.main()

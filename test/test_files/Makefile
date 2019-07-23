@@ -8,7 +8,7 @@ TARGETS=user libmock.so libmock_plt.so librpath_one.so \
 	$(RPATH_DIR)/librpath_two.so $(RPATH_SUBDIR)/librpath_three.so \
 	$(RPATH_SUBDIR)/librunpath.so $(RPATH_DIR)/libldd_search.so \
 	libnoldconfig.so libnot_imported.so structs/structs structs/libstructs.so \
-	structs/structs32 structs/libstructs32.so \
+	structs/structs32 structs/libstructs32.so libinit_fini.so \
 	$(addprefix $(LOADERDIR)/, bin bin1a bin2 lib1a.so lib1.so lib2.so lib3.so)
 
 .PHONY: all clean
@@ -66,6 +66,9 @@ structs/libstructs32.so: structs/libstructs.c
 
 structs/structs32: structs/structs.c structs/libstructs32.so
 	$(CC) $(CFLAGS:64=32) -Wl,-rpath='$$ORIGIN',--enable-new-dtags -Lstructs -o $@ $< -lstructs32
+
+libinit_fini.so: init_fini.c
+	$(CC) $(CFLAGS) -o $@ $^
 
 $(LOADERDIR)/lib3.so: $(LOADERDIR)/lib3.c
 	$(CC) $(CFLAGS) -o $@ $<
