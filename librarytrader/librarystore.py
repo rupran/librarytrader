@@ -678,16 +678,16 @@ class LibraryStore(BaseStore):
                 else:
                     library = Library(path, load_elffile=False)
                     def load_dict_with_set_values(from_dict, library, name, convert_key=None):
-                        for key, value in from_dict[name].items():
+                        for key, value in from_dict.get(name, {}).items():
                             key = convert_key(key) if convert_key else key
                             getattr(library, name)[key] = set(value)
                     def load_ordered_dict_from_list(from_dict, library, name):
                         # Recreate order from list
-                        for key, value in from_dict[name]:
+                        for key, value in from_dict.get(name, []):
                             getattr(library, name)[key] = value
 
                     library.entrypoint = content["entrypoint"]
-                    library.imports = content["imports"]
+                    library.imports = content.get("imports", {})
                     load_ordered_dict_from_list(content, library, "exported_names")
                     library.exported_addrs = collections.defaultdict(list)
                     for name, addr in library.exported_names.items():
@@ -697,17 +697,17 @@ class LibraryStore(BaseStore):
                     for key in library.exported_addrs.keys():
                         if key not in library.export_users:
                             library.export_users[key] = set()
-                    library.function_addrs = set(content["function_addrs"])
+                    library.function_addrs = set(content.get("function_addrs", []))
                     load_ordered_dict_from_list(content, library, "imports_plt")
                     load_ordered_dict_from_list(content, library, "exports_plt")
                     load_ordered_dict_from_list(content, library, "needed_libs")
                     load_ordered_dict_from_list(content, library, "all_imported_libs")
-                    library.rpaths = content["rpaths"]
-                    library.runpaths = content["runpaths"]
+                    library.rpaths = content.get("rpaths", [])
+                    library.runpaths = content.get("runpaths", [])
                     load_dict_with_set_values(content, library, "internal_calls", int)
                     load_dict_with_set_values(content, library, "external_calls", int)
                     library.local_functions = collections.defaultdict(list)
-                    for addr, names in content["local_functions"].items():
+                    for addr, names in content.get("local_functions", {}).items():
                         library.local_functions[int(addr)] = names
                     load_dict_with_set_values(content, library, "local_calls", int)
                     load_dict_with_set_values(content, library, "local_users", int)
@@ -722,11 +722,11 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "local_object_refs", int)
                     load_dict_with_set_values(content, library, "import_object_refs", int)
                     load_dict_with_set_values(content, library, "object_users", int)
-                    library.init_functions = content["init_functions"]
-                    library.fini_functions = content["fini_functions"]
+                    library.init_functions = content.get("init_functions", [])
+                    library.fini_functions = content.get("fini_functions", [])
 
-                    library.ranges = {int(key):value for key, value in content["ranges"].items()}
-                    library.object_ranges = {int(key):value for key, value in content["object_ranges"].items()}
+                    library.ranges = {int(key):value for key, value in content.get("ranges", {}).items()}
+                    library.object_ranges = {int(key):value for key, value in content.get("object_ranges", {}).items()}
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     self._add_library(path, library)
 
