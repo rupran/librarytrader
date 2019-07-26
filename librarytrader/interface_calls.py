@@ -46,10 +46,9 @@ def disassemble_objdump(library, start, length, obj=None):
     start += library.load_offset
 
     objdump_prefix = ''
-    if library.elfheader['e_machine'] == 'EM_AARCH64':
+    if library.is_aarch64():
         objdump_prefix = 'aarch64-linux-gnu-'
-    elif library.elfheader['e_machine'] == 'EM_386' or \
-            library.elfheader['e_machine'] == 'EM_X86_64':
+    elif library.is_i386() or library.is_x86_64():
         objdump_prefix = 'x86_64-linux-gnu-'
     objdump = '{}objdump'.format(objdump_prefix)
 
@@ -81,11 +80,10 @@ def find_calls_from_objdump(library, disas):
     calls_to_imports = set()
     calls_to_locals = set()
 
-    if library.elfheader['e_machine'] == 'EM_AARCH64':
+    if library.is_aarch64():
         logging.error('objdump for AArch64 not supported yet!')
         return (calls_to_exports, calls_to_imports, calls_to_locals)
-    elif library.elfheader['e_machine'] == 'EM_386' or \
-            library.elfheader['e_machine'] == 'EM_X86_64':
+    elif library.is_i386() or library.is_x86_64():
         CALL_REGEX = re.compile(r'^call[q]?\s+([0-9a-f]+).*$')
         JMP_REGEX = re.compile(r'^jmp[q]?\s+([0-9a-f]+).*$')
         JNE_REGEX = re.compile(r'^j[n]?e\s+([0-9a-f]+).*$')
@@ -140,13 +138,12 @@ def find_calls_from_capstone(library, disas):
     imported_object_refs = set()
     exported_object_refs = set()
     local_object_refs = set()
-    if library.elfheader['e_machine'] == 'EM_AARCH64':
+    if library.is_aarch64():
         call_group = capstone.arm64_const.ARM64_GRP_CALL
         jump_group = capstone.arm64_const.ARM64_GRP_JUMP
         imm_tag = capstone.arm64.ARM64_OP_IMM
         mem_tag = None #TODO: not implemented
-    elif library.elfheader['e_machine'] == 'EM_386' or \
-            library.elfheader['e_machine'] == 'EM_X86_64':
+    elif library.is_i386() or library.is_x86_64():
         call_group = capstone.x86_const.X86_GRP_CALL
         jump_group = capstone.x86_const.X86_GRP_JUMP
         imm_tag = capstone.x86.X86_OP_IMM
@@ -300,9 +297,9 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     # Disassemble with the right machine type
     arch = capstone.CS_ARCH_X86
     mode = capstone.CS_MODE_64
-    if library.elfheader['e_machine'] == 'EM_386':
+    if library.is_i386():
         mode = capstone.CS_MODE_32
-    if library.elfheader['e_machine'] == 'EM_AARCH64':
+    if library.is_aarch64():
         arch = capstone.CS_ARCH_ARM64
         mode = capstone.CS_MODE_ARM
 

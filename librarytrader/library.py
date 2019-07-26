@@ -132,6 +132,15 @@ class Library:
         if parse:
             self.parse_functions()
 
+    def is_i386(self):
+        return self.elfheader['e_machine'] == 'EM_386'
+
+    def is_x86_64(self):
+        return self.elfheader['e_machine'] == 'EM_X86_64'
+
+    def is_aarch64(self):
+        return self.elfheader['e_machine'] == 'EM_AARCH64'
+
     def _get_symbol_offset(self, symbol):
         return symbol['st_value'] - self.load_offset
 
@@ -208,11 +217,11 @@ class Library:
         plt_entsize = 16
         plt_addralign = 16
 
-        if self.elfheader['e_machine'] == 'EM_X86_64':
+        if self.is_x86_64():
             match = lambda x: x[0:2] == b'\xff\x35' and x[6:8] == b'\xff\x25'
-        elif self.elfheader['e_machine'] == 'EM_386':
+        elif self.is_i386():
             match = lambda x: x[0:2] == b'\xff\xb3' and x[6:8] == b'\xff\xa3'
-        elif self.elfheader['e_machine'] == 'EM_AARCH64':
+        elif self.is_aarch64():
             if self.elfheader['e_ident']['EI_DATA'] == 'ELFDATA2LSB':
                 match = lambda x: x[0:4] == b'\xf0\x7b\xbf\xa9'
             else:
@@ -450,7 +459,7 @@ class Library:
             return addend
 
     def parse_plt(self):
-        if self.elfheader['e_machine'] == 'EM_386':
+        if self.is_i386():
             relaplt = self._elffile.get_section_by_name('.rel.plt')
         else:
             relaplt = self._elffile.get_section_by_name('.rela.plt')
@@ -463,7 +472,7 @@ class Library:
         if relaplt and plt and dynsym:
             plt_base = plt['sh_offset']
 
-            if self.elfheader['e_machine'] == 'EM_AARCH64':
+            if self.is_aarch64():
                 increment = 16
                 # The offset of the first real PLT entry is actually 32 bytes
                 # but we increment in the loop before accessing the entry.
@@ -484,10 +493,8 @@ class Library:
 
                 symbol = None
                 symbol_index = reloc['r_info_sym']
-                if (self.elfheader['e_machine'] == 'EM_386' and \
-                        reloc['r_info_type'] == ENUM_RELOC_TYPE_i386['R_386_IRELATIVE']) or \
-                   (self.elfheader['e_machine'] == 'EM_X86_64' and \
-                        reloc['r_info_type'] == ENUM_RELOC_TYPE_x64['R_X86_64_IRELATIVE']):
+                if (self.is_i386() and reloc['r_info_type'] == ENUM_RELOC_TYPE_i386['R_386_IRELATIVE']) or \
+                   (self.is_x86_64() and reloc['r_info_type'] == ENUM_RELOC_TYPE_x64['R_X86_64_IRELATIVE']):
                     # Locate a pyelftools Symbol object with the an offset equal
                     # to reloc['r_addend'], based on the symbol names. This is
                     # quite paranoid, for regular cases the following should
@@ -524,8 +531,7 @@ class Library:
                           self.fullname)
 
     def parse_plt_got(self):
-        if self.elfheader['e_machine'] != 'EM_386' and \
-                self.elfheader['e_machine'] != 'EM_X86_64':
+        if not self.is_i386() and not self.is_x86_64():
             return
 
         pltgot = self._elffile.get_section_by_name('.plt.got')
@@ -537,7 +543,7 @@ class Library:
         count = pltgot['sh_size'] // entrysize
 
         # We only need the .got/.got.plt offset for 32 bit binaries
-        if self.elfheader['e_machine'] == 'EM_386':
+        if self.is_i386():
             got = self._elffile.get_section_by_name('.got.plt')
             if not got:
                 got = self._elffile.get_section_by_name('.got')
@@ -546,7 +552,7 @@ class Library:
                 return
 
         # The names are different for 32 vs 64 bit binaries
-        if self.elfheader['e_machine'] == 'EM_386':
+        if self.is_i386():
             dynrel = self._elffile.get_section_by_name('.rel.dyn')
         else:
             # For 64 bit, the entries could be in .rela.got or merged into
@@ -576,7 +582,7 @@ class Library:
                                         self._elffile.stream,
                                         stream_pos=cur_entry)
             offset = pltgot_entry['offset']
-            if self.elfheader['e_machine'] == 'EM_386':
+            if self.is_i386():
                 # 32-bit: relative to .got.plt/.got base address
                 got_entry = got['sh_addr'] + offset
             else:
@@ -596,7 +602,7 @@ class Library:
                         self._get_symbol_offset(symbol)
 
     def parse_rela_dyn(self):
-        if self.elfheader['e_machine'] == 'EM_386':
+        if self.is_i386():
             dynrel = self._elffile.get_section_by_name('.rel.dyn')
         else:
             dynrel = self._elffile.get_section_by_name('.rela.got')
@@ -607,11 +613,11 @@ class Library:
         dynsym = self._get_dynsym()
         if not dynsym:
             return
-        if self.elfheader['e_machine'] == 'EM_386':
+        if self.is_i386():
             target_reloc_type = ENUM_RELOC_TYPE_i386['R_386_GLOB_DAT']
             fptr_reloc_type = ENUM_RELOC_TYPE_i386['R_386_RELATIVE']
             ptr_reloc_type = ENUM_RELOC_TYPE_i386['R_386_32']
-        elif self.elfheader['e_machine'] == 'EM_X86_64':
+        elif self.is_x86_64():
             target_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_GLOB_DAT']
             fptr_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_RELATIVE']
             ptr_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_64']
