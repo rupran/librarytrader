@@ -434,6 +434,21 @@ class Library:
             logging.debug('DT_FINI_ARRAY at %x, length %d', fini_array, fini_arraysz)
             _process_function_array(fini_array, fini_arraysz, self.fini_functions)
 
+    def _get_addend(self, reloc):
+        if reloc.is_RELA():
+            return reloc['r_addend']
+        else:
+            # R_386_RELATIVE (or more precisely, DT_REL type) relocations
+            # store an implicit addend at the location of the relocation
+            # entry so we need to access that offset
+            target = reloc['r_offset']
+            off = next(self._elffile.address_offsets(target))
+            self.fd.seek(off)
+            addend = struct.unpack('<I', self.fd.read(4))[0]
+            logging.debug('Relocation for offset %x has addend %x',
+                          target, addend)
+            return addend
+
     def parse_plt(self):
         if self.elfheader['e_machine'] == 'EM_386':
             relaplt = self._elffile.get_section_by_name('.rel.plt')
@@ -469,21 +484,24 @@ class Library:
 
                 symbol = None
                 symbol_index = reloc['r_info_sym']
-                if self.elfheader['e_machine'] == 'EM_X86_64' and \
-                        reloc['r_info_type'] == ENUM_RELOC_TYPE_x64['R_X86_64_IRELATIVE']:
+                if (self.elfheader['e_machine'] == 'EM_386' and \
+                        reloc['r_info_type'] == ENUM_RELOC_TYPE_i386['R_386_IRELATIVE']) or \
+                   (self.elfheader['e_machine'] == 'EM_X86_64' and \
+                        reloc['r_info_type'] == ENUM_RELOC_TYPE_x64['R_X86_64_IRELATIVE']):
                     # Locate a pyelftools Symbol object with the an offset equal
                     # to reloc['r_addend'], based on the symbol names. This is
                     # quite paranoid, for regular cases the following should
                     # be enough, but with symbol versioning get_symbol_by_name()
                     # could return different offsets for the same function name:
                     # symbol = dynsym.get_symbol_by_name(unversioned_names[0])[0]
-                    sym_names = self.exported_addrs[reloc['r_addend']]
+                    addend = self._get_addend(reloc)
+                    sym_names = self.exported_addrs[addend]
                     if sym_names:
                         unversioned_names = [x.split('@@')[0] for x in sym_names]
                         symbols = [sym for name in unversioned_names
                                    for sym in dynsym.get_symbol_by_name(name)]
                         symbol = next(sym for sym in symbols
-                                      if self._get_symbol_offset(sym) == reloc['r_addend'])
+                                      if self._get_symbol_offset(sym) == addend)
                 elif hasattr(dynsym, 'get_symbol'):
                     if symbol_index < dynsym.num_symbols():
                         symbol = dynsym.get_symbol(symbol_index)
@@ -661,18 +679,7 @@ class Library:
             got_offset = reloc['r_offset']
             reloc_type = reloc['r_info_type']
             if reloc_type == fptr_reloc_type:
-                # R_386_RELATIVE (or more precisely, DT_REL type) relocations
-                # store an implicit addend at the location of the relocation
-                # entry so we need to access that offset
-                if self.elfheader['e_machine'] == 'EM_386':
-                    off = next(self._elffile.address_offsets(got_offset))
-                    self.fd.seek(off)
-                    location = struct.unpack('<I', self.fd.read(4))[0]
-                    logging.debug('Relocation for offset %x has addend %x',
-                                  got_offset, location)
-                else:
-                    location = reloc['r_addend']
-
+                location = self._get_addend(reloc)
                 ins_point = bisect.bisect(sorted_obj_ranges, got_offset)
                 if ins_point != 0:
                     left_offset = sorted_obj_ranges[ins_point-1]
