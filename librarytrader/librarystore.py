@@ -314,6 +314,7 @@ class LibraryStore(BaseStore):
         return self._callee_cache[libname][function]
 
     def _find_imported_function(self, function, library, map_func=None, users=None, add=True):
+        found = None
         for needed_name, needed_path in library.all_imported_libs.items():
             imp_lib = self.get_from_path(needed_path)
             if not imp_lib:
@@ -326,15 +327,24 @@ class LibraryStore(BaseStore):
                 exported_functions = {map_func(key): val for key, val in
                                       imp_lib.exported_names.items()}
             if function in exported_functions:
-                library.imports[function] = needed_path
-                if add:
-                    addr = exported_functions[function]
-                    imp_lib.add_export_user(addr, library.fullname)
-                    if users is not None:
-                        users[(imp_lib.fullname, addr)].add(library.fullname)
-
                 logging.debug('|- found \'%s\' in %s', function, needed_path)
-                return True
+                # End the search if we find a strong definition...
+                if imp_lib.export_bind[function] == 'STB_GLOBAL':
+                    found = (imp_lib, exported_functions[function])
+                    break
+                # ... otherwise keep the first weak definition
+                elif found is None:
+                    found = (imp_lib, exported_functions[function])
+
+        if found is not None:
+            imp_lib, addr = found
+            library.imports[function] = imp_lib.fullname
+            if add:
+                imp_lib.add_export_user(addr, library.fullname)
+                if users is not None:
+                    users[(imp_lib.fullname, addr)].add(library.fullname)
+
+            return True
         return False
 
     def _find_imported_object(self, obj, library, map_func=None, users=None, add=True):
@@ -490,6 +500,10 @@ class LibraryStore(BaseStore):
                     logging.debug('previous weak definition override for %s@%x in %s (was in %s)',
                                   name, addr, cur_lib.fullname,
                                   already_defined[name][0])
+                    # At this point, we actually need to update references to
+                    # the overriden weak symbol and point them to this symbol.
+                    # Maybe we need to split reading symbols and resolving them
+                    # into two separate loops here
                     pass
                 else:
                     continue
