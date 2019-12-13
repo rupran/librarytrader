@@ -392,7 +392,7 @@ class Library:
                     size = symbol['st_size']
                     self.exported_objs[addr].append(name)
                     self.exported_obj_names[name] = addr
-                    self.object_ranges[addr] = size
+                    self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), size)
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -833,11 +833,11 @@ class Library:
                     if addr not in self.exported_objs:
                         self.exported_objs[addr].append(name)
                         self.exported_obj_names[name] = addr
-                        self.object_ranges[addr] = size
+                        self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), size)
                 elif symbol_bind == 'STB_LOCAL':
                     self.local_objs[addr].append(symbol.name)
                     # Names are not unique for local objects!
-                    self.object_ranges[addr] = symbol['st_size']
+                    self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), symbol['st_size'])
 
         if external_elf:
             external_elf.stream.close()
