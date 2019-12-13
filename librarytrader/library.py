@@ -67,6 +67,9 @@ class Library:
                 self.entrypoint = self.elfheader['e_entry'] - self.load_offset
 
         self._version_names = {}
+        self._version_indices = {}
+        self.defines_versions = False
+        self.version_descriptions = {}
 
         # exported_addrs: address -> symbol names
         self.exported_addrs = collections.defaultdict(list)
@@ -319,6 +322,27 @@ class Library:
                     self.export_bind[name] = symbol_bind
                     self.exported_names[name] = start
                     self.exported_addrs[start].append(name)
+
+                    if self.defines_versions:
+                        # Check for special cases with this statement. We add
+                        # an unversioned name with STB_GLOBAL binding to the
+                        # list of defined versions. This should be used if
+                        # we only find one version during the lookup.
+                        if symbol.name not in self.version_descriptions:
+                            self.version_descriptions[symbol.name] = []
+                        version_index = self._version_indices[idx]
+                        if version_index == 1:
+                            self.version_descriptions[symbol.name].append((1, True, symbol.name))
+                        if idx in self._version_names:
+                            # index, hidden
+                            descr = (version_index & 0x7fff,
+                                    version_index & 0x8000 == 0x8000,
+                                    '{}@@{}'.format(symbol.name, self._version_names[idx]))
+                            # If there are actual versions defined, put them
+                            # before the unversioned global definition
+                            if descr not in self.version_descriptions[symbol.name]:
+                                self.version_descriptions[symbol.name].insert(0, descr)
+
                     size = symbol['st_size']
                     if symbol.name == '_init':
                         # Sometimes, the _init symbol only has a size of 1 in
@@ -710,6 +734,7 @@ class Library:
         # Parse version definitions for version index -> name mapping
         verdefs = self._elffile.get_section_by_name('.gnu.version_d')
         if verdefs:
+            self.defines_versions = True
             for verdef, verdaux in verdefs.iter_versions():
                 idx_to_names[int(verdef.entry['vd_ndx'])] = list(verdaux)[0].name
 
@@ -729,6 +754,10 @@ class Library:
                 # And-ing out bit 15 is necessary as it might be set to
                 # indicate the symbol in question should be treated as hidden.
                 self._version_names[idx] = idx_to_names[version_idx & 0x7fff]
+            if version_idx == 'VER_NDX_GLOBAL':
+                version_idx = 1
+            if isinstance(version_idx, int):
+                self._version_indices[idx] = version_idx
 
     def parse_symtab(self):
         external_elf = None

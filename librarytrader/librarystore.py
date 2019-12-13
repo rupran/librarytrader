@@ -313,28 +313,102 @@ class LibraryStore(BaseStore):
         self._callee_cache[libname][function] = local_cache
         return self._callee_cache[libname][function]
 
-    def _find_imported_function(self, function, library, map_func=None, users=None, add=True):
+    def _find_imported_function(self, function, library, map_func=None,
+                                users=None, add=True, lookup_iterable=None):
         found = None
-        for needed_name, needed_path in library.all_imported_libs.items():
+        if lookup_iterable is None:
+            lookup_iterable = library.all_imported_libs.items()
+        version_requested = '@@' in function
+
+        map_func_passed = map_func
+
+        for needed_name, needed_path in lookup_iterable:
             imp_lib = self.get_from_path(needed_path)
             if not imp_lib:
                 logging.warning('|- data for \'%s\' not available in %s!',
                                 needed_name, library.fullname)
                 continue
 
+            versions_defined = imp_lib.defines_versions
+
+            lookup_function = function
+            # We need to map if we passed a map_func
+            need_map = map_func_passed is not None
+            if version_requested and not versions_defined:
+                # TODO: glibc mandates a check if the requested version does not
+                # mention the implementing object in its Verneed entry.
+                # Otherwise, we accept a same name match -> strip version name
+                lookup_function = function.split('@@')[0]
+            elif (not version_requested and versions_defined):
+                # TODO: In this case, we need to check that the defined version
+                # for the symbol name is 1 (global) or 2 (baseline of symbols)
+                # or we have exactly one matching, non-hidden version of the
+                # symbol
+                need_map = True
+                map_func = lambda x: x.split('@@')[0]
+
+            # Check against the versioned names of exports...
             exported_functions = imp_lib.exported_names
-            if map_func:
-                exported_functions = {map_func(key): val for key, val in
-                                      imp_lib.exported_names.items()}
-            if function in exported_functions:
+            # ... except if we need to check for an unversioned function name
+            if need_map:
+                #exported_functions = {map_func(key): val for key, val in
+                #                      imp_lib.exported_names.items()}
+                exported_functions = imp_lib.version_descriptions
+
+            # Do the actual lookup
+            if lookup_function in exported_functions:
+                # If we're looking for an unversioned function in a versioned
+                # library, we need to adjust the unversioned name to the correct
+                # versioned implementation as there could be multiple ones.
+                if (not version_requested and versions_defined):
+                    # Get all descriptors of functions with the requested name
+                    attrs = imp_lib.version_descriptions.get(lookup_function, None)
+                    if attrs is not None:
+                        selected = None
+                        # We found the right symbol if:
+                        for idx, hidden, versioned_name in attrs:
+                            # it's either the base definition...
+                            if idx in (1, 2): #and selected is None:
+                                selected = versioned_name
+                                break
+                            # or if it is not hidden and we have exactly one
+                            # matching symbol name
+                            if hidden:
+                                continue
+                            if selected:
+                                # multiple unhidden symbols -> ambiguous
+                                logging.error('multiple non-hidden versioned symbols '\
+                                              'for function %s in %s',
+                                              lookup_function, imp_lib.fullname)
+                                selected = None
+                                break
+                            else:
+                                selected = versioned_name
+                                logging.debug('selected %s as the matching function in %s',
+                                              selected, imp_lib.fullname)
+
+                        # If selected is None, we either didn't find a version
+                        # at all or we found multiple ones. In this case we must
+                        # continue the search in the next object.
+                        if selected is None:
+                            continue
+                        # If we found the right version, mark this as the target
+                        # function for the following steps
+                        lookup_function = selected
+                        # For this lookup, we need the original exported names
+                        # back as we're now dealing with versions again
+                        exported_functions = imp_lib.exported_names
+
+                # TODO: case where version was requested and defined (dl-lookup:120)
+
                 logging.debug('|- found \'%s\' in %s', function, needed_path)
                 # End the search if we find a strong definition...
-                if imp_lib.export_bind[function] == 'STB_GLOBAL':
-                    found = (imp_lib, exported_functions[function])
+                if imp_lib.export_bind[lookup_function] == 'STB_GLOBAL':
+                    found = (imp_lib, exported_functions[lookup_function])
                     break
                 # ... otherwise keep the first weak definition
-                elif found is None:
-                    found = (imp_lib, exported_functions[function])
+                elif found is None and imp_lib.export_bind[lookup_function] == 'STB_WEAK':
+                    found = (imp_lib, exported_functions[lookup_function])
 
         if found is not None:
             imp_lib, addr = found
@@ -388,11 +462,6 @@ class LibraryStore(BaseStore):
         for function in library.imports:
             # Try to find the exact name in all imported libraries...
             found = self._find_imported_function(function, library)
-            if not found:
-                # ...if that didn't come up with anything, try again, but strip
-                # the version names off all exports of the imported libraries.
-                found = self._find_imported_function(function, library,
-                                                     lambda x: x.split('@@')[0])
 
             if not found:
                 # Hack: search function in all libraries in the store
@@ -442,20 +511,20 @@ class LibraryStore(BaseStore):
             if 'EXTERNAL' in export_users:
                 users[(library.fullname, addr)].add('EXTERNAL')
 
-        already_defined = {}
         for name, addr in library.exported_names.items():
-            already_defined[name] = (library.fullname, addr, library.export_bind[name])
             # TODO: here we mark all exported names of entrypoints as used even
             # if only one specific function was used (and already marked as
             # EXTERNAL) -> maybe we should check that as well
             library.export_users[addr].add('TOPLEVEL')
             users[(library.fullname, addr)].add('TOPLEVEL')
 
-        overload = False
 
         worklist = collections.deque()
         worklist.append((library.fullname, library.fullname))
         worklist.extend(library.all_imported_libs.items())
+
+        lookup_list = list(worklist)
+
         while worklist:
             cur_name, cur_path = worklist.popleft()
             logging.debug('... working on %s', cur_path)
@@ -468,46 +537,14 @@ class LibraryStore(BaseStore):
                 # FIXME: real behaviour with versions?
                 # Crossreferencing here only makes sense for single binaries
                 # as starting points, doesn't it?
-                found = False
-                for name in (imp_name, imp_name.split('@@')[0]):
-                    if name in already_defined:
-                        logging.debug('in %s: %s already defined from %s',
-                                      cur_name, name, already_defined[name])
-                        def_lib_path, addr, bind = already_defined[name]
-                        cur_lib.imports[imp_name] = def_lib_path
-                        if add_export:
-                            self.get_from_path(def_lib_path).add_export_user(addr, cur_lib.fullname)
-                            users[(def_lib_path, addr)].add(cur_lib.fullname)
-                        found = True
-                        overload = True
-                        break
+                found = self._find_imported_function(imp_name, cur_lib,
+                                                     users=users, add=add_export,
+                                                     lookup_iterable=lookup_list)
+                if not found:
+                    logging.debug('absolutely no match for %s:%s:%s (working on %s)',
+                                  cur_name, cur_path, imp_name, library.fullname)
 
-                if not found:
-                    found = self._find_imported_function(imp_name, cur_lib,
-                                                         users=users, add=add_export)
-                if not found:
-                    found = self._find_imported_function(imp_name, cur_lib,
-                                                         map_func=lambda x: x.split('@@')[0],
-                                                         users=users, add=add_export)
-                if not found:
-                    logging.info('absolutely no match for %s:%s:%s (working on %s)',
-                                 cur_name, cur_path, imp_name, library.fullname)
-            for name, addr in cur_lib.exported_names.items():
-                if name not in already_defined:
-                    pass
-                elif already_defined[name][2] == 'STB_WEAK' and \
-                        cur_lib.export_bind[name] != 'STB_WEAK':
-                    logging.debug('previous weak definition override for %s@%x in %s (was in %s)',
-                                  name, addr, cur_lib.fullname,
-                                  already_defined[name][0])
-                    # At this point, we actually need to update references to
-                    # the overriden weak symbol and point them to this symbol.
-                    # Maybe we need to split reading symbols and resolving them
-                    # into two separate loops here
-                    pass
-                else:
-                    continue
-                already_defined[name] = (cur_lib.fullname, addr, cur_lib.export_bind[name])
+
             for addr in cur_lib.init_functions:
                 cur_lib.add_export_user(addr, 'INITUSER')
                 users[(cur_lib.fullname, addr)].add('INITUSER')
@@ -515,7 +552,7 @@ class LibraryStore(BaseStore):
                 cur_lib.add_export_user(addr, 'FINIUSER')
                 users[(cur_lib.fullname, addr)].add('FINIUSER')
 
-        return users, overload
+        return users
 
     def resolve_all_functions_from_binaries(self, force_add_to_exports=False):
         objs = [lib for lib in self.get_executable_objects()
@@ -526,8 +563,9 @@ class LibraryStore(BaseStore):
         logging.info('Resolving functions from executables...')
         for lib in objs:
             logging.info('... in %s', lib.fullname)
-            users, overload = self.resolve_functions_loaderlike(lib, force_add_to_exports)
-            self.propagate_call_usage(user_dict=users, overload=overload)
+            users = self.resolve_functions_loaderlike(lib, force_add_to_exports)
+            self._callee_cache = {}
+            self.propagate_call_usage(user_dict=users)
 
         logging.info('... done!')
 
@@ -541,9 +579,10 @@ class LibraryStore(BaseStore):
 
         logging.info('... done!')
 
-    def propagate_call_usage(self, all_entries=False, user_dict=None, overload=False):
+    def propagate_call_usage(self, all_entries=False, user_dict=None):
         logging.info('Propagating export users through calls...')
         if user_dict is not None:
+            user_dict_passed = True
             lib_worklist = set(lib for lib in (self.get_from_path(path)
                                                for path, addr in user_dict.keys())
                                if lib)
@@ -551,6 +590,7 @@ class LibraryStore(BaseStore):
             libobjs = self.get_entry_points(all_entries)
             lib_worklist = set(libobjs)
             user_dict = collections.defaultdict(set)
+            user_dict_passed = False
             for lib in lib_worklist:
                 for addr, users in lib.export_users.items():
                     user_dict[(lib.fullname, addr)] = users.copy()
@@ -562,6 +602,7 @@ class LibraryStore(BaseStore):
         for (name, addr), user_libs in user_dict.items():
             if user_libs:
                 worklist.add((self.get_from_path(name), addr))
+
         for lib in set(name for name, addr in user_dict.keys()):
             library_object = self.get_from_path(lib)
             # ... the main function...
@@ -593,7 +634,7 @@ class LibraryStore(BaseStore):
                 # Draw direct reference
                 added = called_lib.add_export_user(trans_callee, lib.fullname)
                 key = (called_lib.fullname, trans_callee)
-                if overload and lib.fullname not in user_dict[key]:
+                if user_dict_passed and lib.fullname not in user_dict[key]:
                     added = True
                 user_dict[key].add(lib.fullname)
                 if added:
@@ -603,7 +644,7 @@ class LibraryStore(BaseStore):
                     # Add user to callee if not already present
                     added = called_lib.add_export_user(trans_callee, user)
                     key = (called_lib.fullname, trans_callee)
-                    if overload and user not in user_dict[key]:
+                    if user_dict_passed and user not in user_dict[key]:
                         added = True
                     user_dict[key].add(user)
                     if not added:
@@ -674,6 +715,9 @@ class LibraryStore(BaseStore):
                 lib_dict["ranges"] = content.ranges
                 lib_dict["object_ranges"] = content.object_ranges
 
+                lib_dict["defines_versions"] = content.defines_versions
+                lib_dict["version_descriptions"] = content.version_descriptions
+
             output[path] = lib_dict
 
         with open(output_file, 'w') as outfd:
@@ -742,6 +786,8 @@ class LibraryStore(BaseStore):
                     library.ranges = {int(key):value for key, value in content.get("ranges", {}).items()}
                     library.object_ranges = {int(key):value for key, value in content.get("object_ranges", {}).items()}
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
+                    library.defines_versions = content.get("defines_versions", False)
+                    library.version_descriptions = content.get("version_descriptions", {})
                     self._add_library(path, library)
 
         logging.debug('... done with %s entries', len(self))
