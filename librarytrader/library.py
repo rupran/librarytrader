@@ -393,6 +393,10 @@ class Library:
                     self.exported_objs[addr].append(name)
                     self.exported_obj_names[name] = addr
                     self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), size)
+                else:
+                    logging.debug('Symbol {}:{} has type {}'.format(self.fullname,
+                                                                    symbol.name,
+                                                                    symbol_bind))
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
