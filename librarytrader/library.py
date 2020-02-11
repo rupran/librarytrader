@@ -147,15 +147,23 @@ class Library:
     def _get_symbol_offset(self, symbol):
         return symbol['st_value'] - self.load_offset
 
-    def _get_function_symbols(self, section):
+    def _get_function_symbols(self, section, prefix_local=False):
         retval = []
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
+        first_nonlocal = 0
+        current_file = None
+        if prefix_local:
+            first_nonlocal = section['sh_info'] + 1
 
         for idx, symbol in enumerate(section.iter_symbols()):
             symbol_type = symbol['st_info']['type']
 
             if idx == 0:
                 continue
+            if prefix_local and symbol_type == 'STT_FILE':
+                current_file = symbol.name
+            if idx == first_nonlocal or current_file == '':
+                current_file = None
             if symbol_type == 'STT_FUNC':
                 pass
             elif (ei_osabi == 'ELFOSABI_LINUX' or \
@@ -172,6 +180,8 @@ class Library:
             else:
                 continue
 
+            if prefix_local and current_file:
+                symbol.name = '{}_{}'.format(current_file, symbol.name)
             retval.append((idx, symbol))
 
         return retval
@@ -796,7 +806,7 @@ class Library:
         if not symtab:
             return
 
-        for _, symbol in self._get_function_symbols(symtab):
+        for _, symbol in self._get_function_symbols(symtab, prefix_local=True):
             shndx = symbol['st_shndx']
             if shndx != 'SHN_UNDEF':
                 self.function_addrs.add(self._get_symbol_offset(symbol))
