@@ -346,8 +346,8 @@ class Library:
                         if idx in self._version_names:
                             # index, hidden
                             descr = (version_index & 0x7fff,
-                                    version_index & 0x8000 == 0x8000,
-                                    '{}@@{}'.format(symbol.name, self._version_names[idx]))
+                                     version_index & 0x8000 == 0x8000,
+                                     '{}@@{}'.format(symbol.name, self._version_names[idx]))
                             # If there are actual versions defined, put them
                             # before the unversioned global definition
                             if descr not in self.version_descriptions[symbol.name]:
@@ -404,9 +404,8 @@ class Library:
                     self.exported_obj_names[name] = addr
                     self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), size)
                 else:
-                    logging.debug('Symbol {}:{} has type {}'.format(self.fullname,
-                                                                    symbol.name,
-                                                                    symbol_bind))
+                    logging.debug('Symbol %s:%s has type %s', self.fullname,
+                                  symbol.name, symbol_bind)
 
     def parse_dynamic(self):
         section = self._elffile.get_section_by_name('.dynamic')
@@ -923,7 +922,6 @@ class Library:
         if requested_name.split('@@')[0] in self.exported_obj_names:
             return self.exported_obj_names[requested_name.split('@@')[0]]
         return None
-
 
     def find_export(self, requested_name):
         # Direct match, name + version
