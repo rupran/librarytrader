@@ -32,6 +32,8 @@ from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
 
 DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug')
 BUILDID_DIR = os.path.join(os.sep, DEBUG_DIR, '.build-id')
+EXTERNAL_DEBUG_DIR = os.environ.get('EXTERNAL_DEBUG_DIR')
+EXTERNAL_BUILDID_DIR = os.environ.get('EXTERNAL_BUILDID_DIR')
 
 def _round_up_to_alignment(size, alignment):
     if size == 0:
@@ -777,6 +779,8 @@ class Library:
         symtab = self._elffile.get_section_by_name('.symtab')
         if not symtab:
             paths = [os.path.join(DEBUG_DIR, self.fullname[1:])]
+            if EXTERNAL_DEBUG_DIR:
+                paths.append(os.path.join(EXTERNAL_DEBUG_DIR, self.fullname[1:]))
             id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
             if not id_section:
                 return
@@ -785,18 +789,24 @@ class Library:
                 if note['n_type'] != 'NT_GNU_BUILD_ID':
                     continue
                 build_id = note['n_desc']
-                paths.insert(0, os.path.join(BUILDID_DIR,
-                                             build_id[:2],
-                                             build_id[2:] + '.debug'))
+                build_id_folder = build_id[:2]
+                build_id_file = build_id[2:] + '.debug'
+                paths.insert(0, os.path.join(BUILDID_DIR, build_id_folder,
+                                             build_id_file))
+                if EXTERNAL_BUILDID_DIR:
+                    paths.insert(0, os.path.join(EXTERNAL_BUILDID_DIR,
+                                                 build_id_folder,
+                                                 build_id_file))
             for path in paths:
                 if not os.path.isfile(path):
                     continue
                 try:
                     external_elf = ELFFile(open(path, 'rb'))
                     symtab = external_elf.get_section_by_name('.symtab')
-                    logging.debug('Found external symtab for %s at %s',
-                                  self.fullname, path)
-                    break
+                    if symtab:
+                        logging.debug('Found external symtab for %s at %s',
+                                      self.fullname, path)
+                        break
                 except (ELFError, OSError) as err:
                     logging.debug('Failed to open external symbol table for %s at %s: %s',
                                   self.fullname, path, err)
