@@ -780,7 +780,8 @@ class Library:
         if not symtab:
             paths = [os.path.join(DEBUG_DIR, self.fullname[1:])]
             if EXTERNAL_DEBUG_DIR:
-                paths.append(os.path.join(EXTERNAL_DEBUG_DIR, self.fullname[1:]))
+                paths.insert(0, os.path.join(EXTERNAL_DEBUG_DIR,
+                                             self.fullname[1:]))
             id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
             if not id_section:
                 return
