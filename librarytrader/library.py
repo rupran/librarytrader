@@ -934,6 +934,10 @@ class Library:
             return self.exported_obj_names[requested_name.split('@@')[0]]
         return None
 
+    def find_local_functions(self, requested_name):
+        return set(addr for addr, names in self.local_functions.items() \
+                   if requested_name in names)
+
     def find_export(self, requested_name):
         # Direct match, name + version
         if requested_name in self.exported_names:
