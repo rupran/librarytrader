@@ -188,15 +188,22 @@ class Runner():
                 library = self.store.get_from_path(path)
                 if not library:
                     continue
+                addrs = set()
                 if function.startswith('LOCAL_'):
-                    addr = int(function[6:])
+                    if function[6:].isdigit():
+                        addrs.add(int(function[6:]))
+                    else:
+                        addrs.update(library.find_local_functions(function[6:]))
+                    logging.debug('_mark_extra_functions: found local function \'%s\' at %s',
+                                  function[6:], addrs)
                 else:
-                    addr = library.find_export(function)
-                if addr is None:
+                    addrs.add(library.find_export(function))
+                if not addrs:
                     logging.warning('mark_extra: %s not found in %s', function,
                                     library.fullname)
                     continue
-                library.add_export_user(addr, 'EXTERNAL')
+                for addr in addrs:
+                    library.add_export_user(addr, 'EXTERNAL')
 
     def _propagate_users_through_calls(self):
         self.get_all_resolved_functions()
