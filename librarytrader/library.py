@@ -310,6 +310,18 @@ class Library:
         #print(self.fullname, hdr, list(rel.iter_relocations())[0])
         return RelocationSection(hdr, '.rela.plt', self._elffile)
 
+    def _fixup_init_size(self, symbol, size, shndx):
+        init_section = self._elffile.get_section(shndx)
+        if init_section.name == '.init':
+            size = max(size, init_section['sh_size'])
+        return size
+
+    def _fixup_fini_size(self, symbol, size, shndx):
+        fini_section = self._elffile.get_section(shndx)
+        if fini_section.name == '.fini':
+            size = max(size, fini_section['sh_size'])
+        return size
+
     def parse_dynsym(self):
         section = self._get_dynsym()
         if not section:
@@ -361,19 +373,17 @@ class Library:
                         # .dynsym but the section header of the underlying
                         # .init section can tell us how long the whole section
                         # is -> take the maximum of those two values.
-                        init_section = self._elffile.get_section(shndx)
-                        if init_section.name == '.init':
-                            # Also add plain '.init' name in addition to
-                            # possibly versioned name
+                        size = self._fixup_init_size(symbol, size, shndx)
+                        # Also add plain '.init' name in addition to
+                        # possibly versioned name
+                        if symbol.name not in self.exported_addrs[start]:
                             self.exported_addrs[start].append(symbol.name)
-                            size = max(size, init_section['sh_size'])
                         if start not in self.init_functions:
                             self.init_functions.append(start)
                     elif symbol.name == '_fini':
-                        fini_section = self._elffile.get_section(shndx)
-                        if fini_section.name == '.fini':
+                        size = self._fixup_fini_size(symbol, size, shndx)
+                        if symbol.name not in self.exported_addrs[start]:
                             self.exported_addrs[start].append(symbol.name)
-                            size = max(size, fini_section['sh_size'])
                         if start not in self.fini_functions:
                             self.fini_functions.append(start)
                     if start in self.ranges and self.ranges[start] != size:
@@ -823,7 +833,6 @@ class Library:
                 start = self._get_symbol_offset(symbol)
                 if start not in self.exported_addrs:
                     size = symbol['st_size']
-                    self.ranges[start] = size
                     name = symbol.name
                     if symbol.name == 'main':
                         self.export_users[start] = set()
@@ -832,9 +841,14 @@ class Library:
                         self.exported_addrs[start].append(name)
                     else:
                         if name == '_init':
+                            size = self._fixup_init_size(symbol, size, shndx)
                             self.init_functions.append(start)
+                        elif name == '_fini':
+                            size = self._fixup_fini_size(symbol, size, shndx)
+                            self.fini_functions.append(start)
                         self.local_functions[start].append(name)
                         self.local_users[start] = set()
+                    self.ranges[start] = size
 
         for idx, symbol in self._get_object_symbols(symtab):
             shndx = symbol['st_shndx']
