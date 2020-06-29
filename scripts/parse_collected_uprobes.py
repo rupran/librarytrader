@@ -34,6 +34,15 @@ def normalize(path):
 
 storepath = sys.argv[1]
 collectpath = sys.argv[2]
+uprobe_file_path = sys.argv[3]
+
+num_to_path = {}
+with open(uprobe_file_path, 'r') as infd:
+    for line in infd:
+        line = line.strip()
+        name, path_and_offset = line.split(' ', 1)
+        path, offset = path_and_offset.split(':')
+        num_to_path[name[2:]] = (path, int(offset, 16))
 
 store = LibraryStore()
 store.load(storepath)
@@ -49,42 +58,46 @@ histo_by_lib_local = collections.defaultdict(int)
 with open(collectpath, 'r') as collectfd:
     for line in collectfd:
         line = line.strip()
-        path, offset = line.rsplit('_', 1)
-        for lib in store.get_library_objects():
-            if normalize(lib.fullname) == path:
-                offset = int(offset, 16)
-                # Note: that misses LOCAL functions, so we would need the
-                # opportunity to add users to functions by offset
-                fnames = lib.exported_addrs[offset]
-                if not fnames:
-                    if offset in lib.local_functions:
-                        matches_local += 1
-                        if offset not in lib.local_users or len(lib.local_users[offset]) == 0:
-                            print('LOCAL: traced usage but no static user: {}:{}'.format(lib.fullname, hex(offset)))
-                            histo_by_lib_local[lib.fullname] += 1
-                            if ".so" in lib.fullname:
-                                traced_only_libraries += 1
-                            else:
-                                traced_only_binaries += 1
-#                        parsed_mapping[lib.fullname].add('LOCAL_{}'.format(offset))
-                        for name in lib.local_functions[offset]:
-                            parsed_mapping[lib.fullname].add('LOCAL_{}'.format(name))
-                        print('LOCAL_{}'.format(offset), 'name set: {}'.format(lib.local_functions[offset]))
-                    else:
-                        print('no functions for {}:{}'.format(lib.fullname, hex(offset)))
-                    break
-                matches_global += 1
-                if offset not in lib.export_users or len(lib.export_users[offset]) == 0:
-                    print('EXPORT: traced usage but no static user: {}:{}'.format(lib.fullname, fnames))
-                    if fnames[0] != '_init' and fnames[0] != '_fini':
-                        histo_by_lib_global[lib.fullname] += 1
+        path, offset = num_to_path[line]
+        lib = store.get(path)
+        if not lib:
+            print('ERROR: {} not found!'.format(path))
+            continue
 
+        fnames = lib.exported_addrs[offset]
+        print(offset, fnames)
+        if not fnames:
+            if offset in lib.local_functions:
+                matches_local += 1
+                if offset not in lib.local_users or len(lib.local_users[offset]) == 0 \
+                        or set(lib.local_users[offset]) == set(['EXTERNAL']):
+                    print('LOCAL: traced usage but no static user: {}:{}'.format(lib.fullname, hex(offset)))
+                    histo_by_lib_local[lib.fullname] += 1
                     if ".so" in lib.fullname:
+                        print('{}:{}:{}'.format(lib.fullname, offset, lib.ranges[offset]))
                         traced_only_libraries += 1
                     else:
                         traced_only_binaries += 1
-                parsed_mapping[lib.fullname].add(fnames[0])
-                break
+#                        parsed_mapping[lib.fullname].add('LOCAL_{}'.format(offset))
+                for name in lib.local_functions[offset]:
+                    parsed_mapping[lib.fullname].add('LOCAL_{}'.format(name))
+                print('LOCAL_{}'.format(offset), 'name set: {}'.format(lib.local_functions[offset]))
+            else:
+                print('no functions for {}:{}'.format(lib.fullname, hex(offset)))
+            continue
+        matches_global += 1
+        if offset not in lib.export_users or len(lib.export_users[offset]) == 0 \
+                or set(lib.export_users[offset]) == set(['EXTERNAL']):
+            print('EXPORT: traced usage but no static user: {}:{}'.format(lib.fullname, fnames))
+            if fnames[0] != '_init' and fnames[0] != '_fini':
+                histo_by_lib_global[lib.fullname] += 1
+
+            if ".so" in lib.fullname:
+                print('{}:{}:{}'.format(lib.fullname, offset, lib.ranges[offset]))
+                traced_only_libraries += 1
+            else:
+                traced_only_binaries += 1
+        parsed_mapping[lib.fullname].add(fnames[0])
 
 n_export = 0
 n_local = 0
