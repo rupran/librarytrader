@@ -672,7 +672,7 @@ class Library:
             ptr_reloc_type = ENUM_RELOC_TYPE_x64['R_X86_64_64']
         else:
             target_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_GLOB_DAT']
-            fptr_reloc_type = None
+            fptr_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_RELATIVE']
             ptr_reloc_type = None
 
         sorted_obj_ranges = sorted(self.object_ranges.keys())
