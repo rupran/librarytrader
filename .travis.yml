@@ -3,6 +3,8 @@ python:
   - "2.7"
   - "3.5"
 install:
+  - sudo apt-get update
+  - sudo apt-get install -y libc6:i386 gcc-multilib
   - pip install .
 git:
   submodules: false
