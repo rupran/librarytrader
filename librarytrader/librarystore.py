@@ -652,6 +652,19 @@ class LibraryStore(BaseStore):
                         continue
                     # Only insert callee if users have changed
                     worklist.add((called_lib, trans_callee))
+            # Add users to accessed exported objects
+            for object_addr in lib.export_object_refs[cur]:
+                for user in users:
+                    lib.add_object_user(object_addr, user)
+            # Add users to accessed local objects
+            for object_addr in lib.local_object_refs[cur]:
+                for user in users:
+                    lib.add_object_user(object_addr, user)
+            # Add users to imported objects
+            #for object_addr in lib.import_object_refs[cur]:
+                #TODO: add logic from line ~290 to add users to correct imported
+                # object in the relevant library
+                #pass
 
         logging.info('... done!')
 
