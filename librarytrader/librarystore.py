@@ -606,7 +606,8 @@ class LibraryStore(BaseStore):
         for lib in set(name for name, addr in user_dict.keys()):
             library_object = self.get_from_path(lib)
             # ... the main function...
-            if 'main' in library_object.exported_addrs[addr]:
+            if 'main' in library_object.exported_names:
+                addr = library_object.exported_names['main']
                 logging.debug('adding %s:main to worklist', lib)
                 worklist.add((library_object, addr))
             # ... all initialization functions...
