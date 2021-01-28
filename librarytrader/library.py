@@ -188,17 +188,27 @@ class Library:
 
         return retval
 
-    def _get_object_symbols(self, section):
+    def _get_object_symbols(self, section, prefix_local=False):
         retval = []
+        first_nonlocal = 0
+        current_file = None
+        if prefix_local:
+            first_nonlocal = section['sh_info'] + 1
 
         for idx, symbol in enumerate(section.iter_symbols()):
             symbol_type = symbol['st_info']['type']
 
+            if prefix_local and symbol_type == 'STT_FILE':
+                current_file = symbol.name
+            if idx == first_nonlocal or current_file == '':
+                current_file = None
             if symbol_type == 'STT_OBJECT':
                 pass
             else:
                 continue
 
+            if prefix_local and current_file:
+                symbol.name = '{}_{}'.format(current_file, symbol.name)
             retval.append((idx, symbol))
 
         return retval
@@ -850,7 +860,7 @@ class Library:
                         self.local_users[start] = set()
                     self.ranges[start] = size
 
-        for idx, symbol in self._get_object_symbols(symtab):
+        for idx, symbol in self._get_object_symbols(symtab, prefix_local=True):
             shndx = symbol['st_shndx']
             symbol_bind = symbol['st_info']['bind']
             if shndx == 'SHN_UNDEF':
