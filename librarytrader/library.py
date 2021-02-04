@@ -149,7 +149,7 @@ class Library:
     def _get_symbol_offset(self, symbol):
         return symbol['st_value'] - self.load_offset
 
-    def _get_function_symbols(self, section, prefix_local=False):
+    def _get_symbols_by_type(self, section, wanted_type, prefix_local):
         retval = []
         ei_osabi = self.elfheader['e_ident']['EI_OSABI']
         first_nonlocal = 0
@@ -166,18 +166,20 @@ class Library:
                 current_file = symbol.name
             if idx == first_nonlocal or current_file == '':
                 current_file = None
-            if symbol_type == 'STT_FUNC':
+            if symbol_type == wanted_type:
                 pass
-            elif (ei_osabi == 'ELFOSABI_LINUX' or \
-                    ei_osabi == 'ELFOSABI_SYSV') \
-                    and symbol_type == 'STT_LOOS':
+            elif wanted_type == 'STT_FUNC' and \
+                    symbol_type == 'STT_LOOS' and \
+                    ei_osabi in ('ELFOSABI_LINUX', 'ELFOSABI_SYSV'):
                 # TODO: generic check for use of LOOS/IFUNC. libc uses
                 # STT_IFUNC (which is the same value as STT_LOOS) to
                 # provide multiple, architecture-specific
                 # implementations of stuff like memcpy, strcpy etc.
                 pass
-            elif 'NOTYPE_AS_FUNCTION' in os.environ and \
-                    (symbol_type == 'STT_NOTYPE' and symbol['st_shndx'] == 'SHN_UNDEF'):
+            elif wanted_type == 'STT_FUNC' and \
+                    'NOTYPE_AS_FUNCTION' in os.environ and \
+                    symbol_type == 'STT_NOTYPE' and \
+                    symbol['st_shndx'] == 'SHN_UNDEF':
                 pass
             else:
                 continue
@@ -187,31 +189,12 @@ class Library:
             retval.append((idx, symbol))
 
         return retval
+
+    def _get_function_symbols(self, section, prefix_local=False):
+        return self._get_symbols_by_type(section, 'STT_FUNC', prefix_local)
 
     def _get_object_symbols(self, section, prefix_local=False):
-        retval = []
-        first_nonlocal = 0
-        current_file = None
-        if prefix_local:
-            first_nonlocal = section['sh_info'] + 1
-
-        for idx, symbol in enumerate(section.iter_symbols()):
-            symbol_type = symbol['st_info']['type']
-
-            if prefix_local and symbol_type == 'STT_FILE':
-                current_file = symbol.name
-            if idx == first_nonlocal or current_file == '':
-                current_file = None
-            if symbol_type == 'STT_OBJECT':
-                pass
-            else:
-                continue
-
-            if prefix_local and current_file:
-                symbol.name = '{}_{}'.format(current_file, symbol.name)
-            retval.append((idx, symbol))
-
-        return retval
+        return self._get_symbols_by_type(section, 'STT_OBJECT', prefix_local)
 
     def _get_versioned_name(self, symbol, idx):
         if idx not in self._version_names:
@@ -418,8 +401,7 @@ class Library:
                 if not addr:
                     continue
                 # STB_LOOS objects are of type STB_GNU_UNIQUE for SYSV binaries
-                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK' or \
-                        symbol_bind == 'STB_LOOS':
+                if symbol_bind in ('STB_GLOBAL', 'STB_WEAK', 'STB_LOOS'):
                     name = self._get_versioned_name(symbol, idx)
                     size = symbol['st_size']
                     self.exported_objs[addr].append(name)
@@ -874,8 +856,7 @@ class Library:
                 addr = symbol['st_value']
                 if not addr:
                     continue
-                if symbol_bind == 'STB_GLOBAL' or symbol_bind == 'STB_WEAK' or \
-                        symbol_bind == 'STB_LOOS':
+                if symbol_bind in ('STB_GLOBAL', 'STB_WEAK', 'STB_LOOS'):
                     name = symbol.name
                     size = symbol['st_size']
                     if addr not in self.exported_objs:
