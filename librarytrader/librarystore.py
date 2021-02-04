@@ -421,8 +421,12 @@ class LibraryStore(BaseStore):
             return True
         return False
 
-    def _find_imported_object(self, obj, library, map_func=None, users=None, add=True):
-        for needed_name, needed_path in library.all_imported_libs.items():
+    def _find_imported_object(self, obj, library, lookup_iterable=None,
+                              map_func=None, users=None, add=True):
+        if lookup_iterable is None:
+            lookup_iterable = library.all_imported_libs.items()
+
+        for needed_name, needed_path in lookup_iterable:
             imp_lib = self.get_from_path(needed_path)
             if not imp_lib:
                 logging.warning('|- data for \'%s\' not available in %s!',
@@ -490,7 +494,7 @@ class LibraryStore(BaseStore):
             found = self._find_imported_object(obj, library)
             if not found:
                 found = self._find_imported_object(obj, library,
-                                                   lambda x: x.split('@@')[0])
+                                                   map_func=lambda x: x.split('@@')[0])
             if not found:
                 logging.warning('|- did not find object \'%s\' from %s',
                                 obj, library.fullname)
@@ -544,6 +548,19 @@ class LibraryStore(BaseStore):
                     logging.debug('absolutely no match for %s:%s:%s (working on %s)',
                                   cur_name, cur_path, imp_name, library.fullname)
 
+            #TODO: Treat objects with correct version lookup (like functions above)
+            for imp_name in cur_lib.imported_objs_locations:
+                found = self._find_imported_object(imp_name, cur_lib,
+                                                   lookup_iterable=lookup_list,
+                                                   users=users, add=add_export)
+                if not found:
+                    found = self._find_imported_object(imp_name, cur_lib,
+                                                       lookup_iterable=lookup_list,
+                                                       map_func=lambda x: x.split('@@')[0],
+                                                       users=users, add=add_export)
+                if not found:
+                    logging.warning('|- did not find object \'%s\' from %s',
+                                    imp_name, cur_lib.fullname)
 
             for addr in cur_lib.init_functions:
                 cur_lib.add_export_user(addr, 'INITUSER')
