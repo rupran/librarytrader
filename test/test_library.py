@@ -237,7 +237,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls = {}
+        for start, size in lib.ranges.items():
+            calls.update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -247,7 +249,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls = {}
+        for start, size in lib.ranges.items():
+            calls.update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -257,7 +261,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_capstone)
+        calls = {}
+        for start, size in lib.ranges.items():
+            calls.update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
@@ -268,7 +274,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls, _, _, _, _, _, _, _ = resolve_calls_in_library(lib, disassemble_objdump)
+        calls = {}
+        for start, size in lib.ranges.items():
+            calls.update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
@@ -280,7 +288,7 @@ class TestLibrary(unittest.TestCase):
 
         result = resolve_calls(store)
         # calls for mock.so, libc-2.23.so and ld-2.23.so
-        self.assertEqual(len(result), 3)
+        self.assertEqual(len(set(res[0] for res in result)), 3)
         call_result = self._convert_numeric_dict(lib, lib.internal_calls)
         self.assertDictEqual(call_result,
                              self.call_result)

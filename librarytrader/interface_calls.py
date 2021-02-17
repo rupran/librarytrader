@@ -283,13 +283,12 @@ def find_calls_from_capstone(library, disas):
     return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
             imported_object_refs, exported_object_refs, local_object_refs)
 
-def resolve_calls_in_library(library, disas_function=disassemble_capstone):
+def resolve_calls_in_library(library, start, size, disas_function=disassemble_capstone):
     logging.debug('Processing %s', library.fullname)
     before = time.time()
     internal_calls = defaultdict(set)
     external_calls = defaultdict(set)
     local_calls = defaultdict(set)
-    ranges = library.get_function_ranges()
     imported_uses = defaultdict(set)
     exported_uses = defaultdict(set)
     local_uses = defaultdict(set)
@@ -307,34 +306,30 @@ def resolve_calls_in_library(library, disas_function=disassemble_capstone):
     cs_obj.detail = True
 
     indir = {}
-    for start, size in ranges.items():
-        disas, resolution_function = disas_function(library, start, size, cs_obj)
-        calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls, \
-            uses_of_imports, uses_of_exports, uses_of_locals = resolution_function(library, disas)
-        if calls_to_exports:
-            internal_calls[start] = calls_to_exports
-        if calls_to_imports:
-            external_calls[start] = calls_to_imports
-        if calls_to_locals:
-            local_calls[start] = calls_to_locals
-        if uses_of_imports:
-            imported_uses[start] = uses_of_imports
-        if uses_of_exports:
-            exported_uses[start] = uses_of_exports
-        if uses_of_locals:
-            local_uses[start] = uses_of_locals
+    disas, resolution_function = disas_function(library, start, size, cs_obj)
+    calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls, \
+        uses_of_imports, uses_of_exports, uses_of_locals = resolution_function(library, disas)
+    if calls_to_exports:
+        internal_calls[start] = calls_to_exports
+    if calls_to_imports:
+        external_calls[start] = calls_to_imports
+    if calls_to_locals:
+        local_calls[start] = calls_to_locals
+    if uses_of_imports:
+        imported_uses[start] = uses_of_imports
+    if uses_of_exports:
+        exported_uses[start] = uses_of_exports
+    if uses_of_locals:
+        local_uses[start] = uses_of_locals
 
-        indir[start] = indirect_calls
+    indir[start] = indirect_calls
 
     after = time.time()
-    duration = after - before
-    logging.info('Thread %d: %s took %.3f s', os.getpid(),
-                                              library.fullname,
-                                              duration)
     return (internal_calls, external_calls, local_calls, indir,
             imported_uses, exported_uses, local_uses, (after - before))
 
-def map_wrapper(path):
+def map_wrapper(input_tuple):
+    path, start, size = input_tuple
     try:
         if isinstance(path, str):
             lib = Library(path, parse=True)
@@ -343,48 +338,48 @@ def map_wrapper(path):
             lib.fd = open(lib.fullname, 'rb')
     except Exception as err:
         logging.error('%s: %s', lib.fullname, err)
-        return (None, None, None, None, None, None, None, None, 0)
+        return (None, -1, None, None, None, None, None, None, None, 0)
 
     internal_calls, external_calls, local_calls, indirect_calls, \
-        imported_uses, exported_uses, local_uses, duration = resolve_calls_in_library(lib)
+        imported_uses, exported_uses, local_uses, duration = resolve_calls_in_library(lib, start, size)
     lib.fd.close()
     del lib.fd
-    return (lib.fullname, internal_calls, external_calls, local_calls, indirect_calls,
+    return (lib.fullname, start, internal_calls, external_calls, local_calls, indirect_calls,
             imported_uses, exported_uses, local_uses, duration)
 
 def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     # Pass by path (-> threads have to reconstruct)
-    #libs = [lib.fullname for lib in sorted(store.get_library_objects(),
-    #                                       key=lambda x: -len(x.exported_addrs))]
+    #libs = [(lib.fullname, start, size) for lib in store.get_library_objects() \
+    #            for start, size in lib.ranges.items()]
     # Pass by object (-> threads need to open only)
-    libs = [lib for lib in sorted(store.get_library_objects(),
-                                  key=lambda x: -len(x.exported_addrs))]
-    logging.info('Searching for calls in %d libraries...', len(libs))
+    calls = [(lib, start, size) for lib in store.get_library_objects() for start, size in lib.ranges.items()]
+    logging.info('Searching for calls in %d libraries...', len(store.get_library_objects()))
     pool = multiprocessing.Pool(n_procs)
-    result = pool.map(map_wrapper, libs, chunksize=1)
+    result = pool.map(map_wrapper, calls, chunksize=100)
     pool.close()
 
     indir = {}
 
-    for fullname, internal_calls, external_calls, local_calls, indirect_calls, \
+    for fullname, start, internal_calls, external_calls, local_calls, indirect_calls, \
             imported_uses, exported_uses, local_uses, _ in result:
-        store[fullname].internal_calls = internal_calls
-        store[fullname].external_calls = external_calls
-        store[fullname].local_calls = local_calls
-        store[fullname].import_object_refs = imported_uses
-        store[fullname].export_object_refs = exported_uses
-        store[fullname].local_object_refs = local_uses
-        indir[fullname] = indirect_calls
-
+        store[fullname].internal_calls.update(internal_calls)
+        store[fullname].external_calls.update(external_calls)
+        store[fullname].local_calls.update(local_calls)
+        store[fullname].import_object_refs.update(imported_uses)
+        store[fullname].export_object_refs.update(exported_uses)
+        store[fullname].local_object_refs.update(local_uses)
+        if fullname not in indir:
+            indir[fullname] = set()
+        indir[fullname].update(indirect_calls)
 
     logging.info('... done!')
-    longest = [(v[0], v[8]) for v in sorted(result, key=lambda x: -x[8])]
+    longest = [(v[0], v[1], v[9]) for v in sorted(result, key=lambda x: -x[9])]
     logging.info(longest[:20])
     calls = 0
     for v in result:
-        calls += len(v[1].values())
         calls += len(v[2].values())
         calls += len(v[3].values())
+        calls += len(v[4].values())
     logging.info('total number of calls: %d', calls)
 #    logging.info('total number of calls: %d', sum(len(v[3].values()) +
 #                                                  len(v[2].values()) +
