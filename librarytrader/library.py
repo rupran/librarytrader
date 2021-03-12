@@ -21,6 +21,7 @@ import logging
 import os
 import struct
 
+import capstone
 from elftools.common.exceptions import ELFError
 from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
@@ -872,6 +873,52 @@ class Library:
             external_elf.stream.close()
             del external_elf
 
+    def get_capstone_object(self):
+        # Create a Cs object with the right machine type
+        arch = capstone.CS_ARCH_X86
+        if self.is_x86_64():
+            mode = capstone.CS_MODE_64
+        elif self.is_i386():
+            mode = capstone.CS_MODE_32
+        elif self.is_aarch64():
+            arch = capstone.CS_ARCH_ARM64
+            mode = capstone.CS_MODE_ARM
+
+        cs_obj = capstone.Cs(arch, mode)
+        cs_obj.detail = True
+        return cs_obj
+
+    def _postprocess_ranges(self):
+        # Check the gaps between recognized functions. If they only consist of
+        # NOPs, extend the previous function to include the NOPs as well and
+        # hence close the 'useless' gap between consecutive functions.
+        ranges_list = sorted(self.ranges.items())
+        for idx, (start, size) in enumerate(ranges_list[:-1]):
+            cur_end = start + size
+            next_start = ranges_list[idx + 1][0]
+            gap = next_start - cur_end
+            if gap > 0:
+                only_nops = True
+
+                cs_obj = self.get_capstone_object()
+                self.fd.seek(cur_end)
+                code = self.fd.read(gap)
+                disas = list(cs_obj.disasm(code, start))
+
+                if sum(instr.size for instr in disas) != gap:
+                    logging.debug('error disassembling NOPs at %x:%d, continuing',
+                                  cur_end, gap)
+                    continue
+
+                for instr in disas:
+                    if instr.mnemonic != 'nop':
+                        only_nops = False
+                        break
+
+                if only_nops:
+                    logging.debug('fixing nop gap at %x: %d bytes', cur_end, gap)
+                    self.ranges[start] += gap
+
     def parse_functions(self, release=False):
         self.parse_versions()
         self.parse_dynamic()
@@ -882,6 +929,7 @@ class Library:
         self.parse_rela_dyn()
         if self.entrypoint:
             self.function_addrs.add(self.entrypoint)
+        self._postprocess_ranges()
         if release:
             self._release_elffile()
 

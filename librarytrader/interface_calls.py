@@ -284,7 +284,7 @@ def find_calls_from_capstone(library, disas):
             imported_object_refs, exported_object_refs, local_object_refs)
 
 def resolve_calls_in_library(library, start, size, disas_function=disassemble_capstone):
-    logging.debug('Processing %s', library.fullname)
+    logging.debug('Processing %s:%x', library.fullname, start)
     before = time.time()
     internal_calls = defaultdict(set)
     external_calls = defaultdict(set)
@@ -293,17 +293,7 @@ def resolve_calls_in_library(library, start, size, disas_function=disassemble_ca
     exported_uses = defaultdict(set)
     local_uses = defaultdict(set)
 
-    # Disassemble with the right machine type
-    arch = capstone.CS_ARCH_X86
-    mode = capstone.CS_MODE_64
-    if library.is_i386():
-        mode = capstone.CS_MODE_32
-    if library.is_aarch64():
-        arch = capstone.CS_ARCH_ARM64
-        mode = capstone.CS_MODE_ARM
-
-    cs_obj = capstone.Cs(arch, mode)
-    cs_obj.detail = True
+    cs_obj = library.get_capstone_object()
 
     indir = {}
     disas, resolution_function = disas_function(library, start, size, cs_obj)
