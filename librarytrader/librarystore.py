@@ -155,6 +155,8 @@ class LibraryStore(BaseStore):
             if 'LD_LIBRARY_PATH' in os.environ:
                 ld_library_paths = [p.replace('$ORIGIN', os.path.dirname(library.fullname))
                                     for p in os.environ['LD_LIBRARY_PATH'].split(':')]
+            if 'EXTRA_LIBRARY_PATH' in os.environ:
+                ld_library_paths.extend(os.environ['EXTRA_LIBRARY_PATH'].split(':'))
 
         # Find and resolve imports
         self._find_compatible_libs(library, callback, inherited_rpaths,
