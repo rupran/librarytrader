@@ -507,7 +507,9 @@ class Library:
             relaplt = self._elffile.get_section_by_name('.rela.plt')
         if not relaplt:
             relaplt = self._create_mock_rela_plt()
-        plt = self._elffile.get_section_by_name('.plt')
+        plt = self._elffile.get_section_by_name('.plt.sec')
+        if not plt:
+            plt = self._elffile.get_section_by_name('.plt')
         if not plt:
             plt = self._search_for_plt()
         dynsym = self._get_dynsym()
@@ -525,7 +527,12 @@ class Library:
                 # entry in the .plt is in fact 16 bytes long, so round up to
                 # sh_addralign (see https://reviews.llvm.org/D9560).
                 increment = _round_up_to_alignment(plt['sh_entsize'], plt['sh_addralign'])
-                plt_offset = 0
+                if plt.name == '.plt.sec':
+                    # .plt.sec does not contain a special first entry so the
+                    # first entry (after incrementing) starts at offset 0.
+                    plt_offset = -increment
+                else:
+                    plt_offset = 0
 
             for reloc in sorted(relaplt.iter_relocations(), key=lambda rel: rel['r_offset']):
                 # The first entry in .plt is special, it contains the logic for
