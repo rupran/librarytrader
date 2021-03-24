@@ -799,21 +799,19 @@ class Library:
                     paths.insert(3, os.path.join(debug_path,
                                                  os.path.basename(self.fullname) + '.debug'))
             id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
-            if not id_section:
-                return
-
-            for note in id_section.iter_notes():
-                if note['n_type'] != 'NT_GNU_BUILD_ID':
-                    continue
-                build_id = note['n_desc']
-                build_id_folder = build_id[:2]
-                build_id_file = build_id[2:] + '.debug'
-                paths.insert(0, os.path.join(BUILDID_DIR, build_id_folder,
-                                             build_id_file))
-                if EXTERNAL_BUILDID_DIR:
-                    paths.insert(0, os.path.join(EXTERNAL_BUILDID_DIR,
-                                                 build_id_folder,
+            if id_section:
+                for note in id_section.iter_notes():
+                    if note['n_type'] != 'NT_GNU_BUILD_ID':
+                        continue
+                    build_id = note['n_desc']
+                    build_id_folder = build_id[:2]
+                    build_id_file = build_id[2:] + '.debug'
+                    paths.insert(0, os.path.join(BUILDID_DIR, build_id_folder,
                                                  build_id_file))
+                    if EXTERNAL_BUILDID_DIR:
+                        paths.insert(0, os.path.join(EXTERNAL_BUILDID_DIR,
+                                                     build_id_folder,
+                                                     build_id_file))
             for path in paths:
                 if not os.path.isfile(path):
                     continue
