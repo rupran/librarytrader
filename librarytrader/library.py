@@ -794,6 +794,10 @@ class Library:
                     paths.insert(0, os.path.join(debug_path, self.fullname[1:]))
                     paths.insert(1, os.path.join(debug_path,
                                                  self.fullname[1:] + '.debug'))
+                    paths.insert(2, os.path.join(debug_path,
+                                                 os.path.basename(self.fullname)))
+                    paths.insert(3, os.path.join(debug_path,
+                                                 os.path.basename(self.fullname) + '.debug'))
             id_section = self._elffile.get_section_by_name('.note.gnu.build-id')
             if not id_section:
                 return
