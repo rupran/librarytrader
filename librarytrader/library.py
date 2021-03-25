@@ -131,9 +131,9 @@ class Library:
         self.fini_functions = []
 
         self.ranges = {}
-        self.external_calls = {}
-        self.internal_calls = {}
-        self.local_calls = {}
+        self.external_calls = collections.defaultdict(set)
+        self.internal_calls = collections.defaultdict(set)
+        self.local_calls = collections.defaultdict(set)
 
         if parse:
             self.parse_functions()
@@ -830,12 +830,32 @@ class Library:
         if not symtab:
             return
 
+        sorted_ranges = sorted(self.ranges.items())
         for _, symbol in self._get_function_symbols(symtab, prefix_local=True):
             shndx = symbol['st_shndx']
             if shndx != 'SHN_UNDEF':
-                self.function_addrs.add(self._get_symbol_offset(symbol))
                 start = self._get_symbol_offset(symbol)
+                self.function_addrs.add(start)
+                size = symbol['st_size']
                 if start not in self.exported_addrs:
+                    # Check if this function overlapping with another function
+                    ins_point = bisect.bisect(sorted_ranges, (start, size))
+                    if ins_point != 0:
+                        prev_start, prev_size = sorted_ranges[ins_point-1]
+                        if start in range(prev_start, prev_start + prev_size) \
+                                and prev_start != start:
+                            prev_name = ''
+                            if prev_start in self.exported_addrs:
+                                prev_name = self.exported_addrs[prev_start]
+                            elif prev_start in self.local_functions:
+                                prev_name = self.local_functions[prev_start]
+                            symbol_bind = symbol['st_info']['bind']
+                            if symbol_bind == 'STB_LOCAL':
+                                self.local_calls[prev_start].add(start)
+                                logging.debug('local function \'%s\' inside symbol \'%s\'' \
+                                              ', %x:%d contains %x:%d', symbol.name,
+                                              prev_name, prev_start, prev_size,
+                                              start, size)
                     size = symbol['st_size']
                     name = symbol.name
                     if symbol.name == 'main':
@@ -853,6 +873,7 @@ class Library:
                         self.local_functions[start].append(name)
                         self.local_users[start] = set()
                     self.ranges[start] = size
+                    bisect.insort(sorted_ranges, (start, size))
 
         for idx, symbol in self._get_object_symbols(symtab, prefix_local=True):
             shndx = symbol['st_shndx']
@@ -908,7 +929,10 @@ class Library:
             cur_end = start + size
             next_start = ranges_list[idx + 1][0]
             gap = next_start - cur_end
-            if gap > 0:
+            if gap < 0:
+                logging.debug('possibly overlapping functions at %x:%d/%x',
+                              start, size, next_start)
+            elif gap > 0:
                 only_nops = True
 
                 cs_obj = self.get_capstone_object()

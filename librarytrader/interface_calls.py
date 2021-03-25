@@ -286,12 +286,6 @@ def find_calls_from_capstone(library, disas):
 def resolve_calls_in_library(library, start, size, disas_function=disassemble_capstone):
     logging.debug('Processing %s:%x', library.fullname, start)
     before = time.time()
-    internal_calls = defaultdict(set)
-    external_calls = defaultdict(set)
-    local_calls = defaultdict(set)
-    imported_uses = defaultdict(set)
-    exported_uses = defaultdict(set)
-    local_uses = defaultdict(set)
 
     cs_obj = library.get_capstone_object()
 
@@ -299,24 +293,12 @@ def resolve_calls_in_library(library, start, size, disas_function=disassemble_ca
     disas, resolution_function = disas_function(library, start, size, cs_obj)
     calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls, \
         uses_of_imports, uses_of_exports, uses_of_locals = resolution_function(library, disas)
-    if calls_to_exports:
-        internal_calls[start] = calls_to_exports
-    if calls_to_imports:
-        external_calls[start] = calls_to_imports
-    if calls_to_locals:
-        local_calls[start] = calls_to_locals
-    if uses_of_imports:
-        imported_uses[start] = uses_of_imports
-    if uses_of_exports:
-        exported_uses[start] = uses_of_exports
-    if uses_of_locals:
-        local_uses[start] = uses_of_locals
 
     indir[start] = indirect_calls
 
     after = time.time()
-    return (internal_calls, external_calls, local_calls, indir,
-            imported_uses, exported_uses, local_uses, (after - before))
+    return (calls_to_exports, calls_to_imports, calls_to_locals, indir,
+            uses_of_imports, uses_of_exports, uses_of_locals, (after - before))
 
 def map_wrapper(input_tuple):
     path, start, size = input_tuple
@@ -352,12 +334,12 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
 
     for fullname, start, internal_calls, external_calls, local_calls, indirect_calls, \
             imported_uses, exported_uses, local_uses, _ in result:
-        store[fullname].internal_calls.update(internal_calls)
-        store[fullname].external_calls.update(external_calls)
-        store[fullname].local_calls.update(local_calls)
-        store[fullname].import_object_refs.update(imported_uses)
-        store[fullname].export_object_refs.update(exported_uses)
-        store[fullname].local_object_refs.update(local_uses)
+        store[fullname].internal_calls[start].update(internal_calls)
+        store[fullname].external_calls[start].update(external_calls)
+        store[fullname].local_calls[start].update(local_calls)
+        store[fullname].import_object_refs[start].update(imported_uses)
+        store[fullname].export_object_refs[start].update(exported_uses)
+        store[fullname].local_object_refs[start].update(local_uses)
         if fullname not in indir:
             indir[fullname] = set()
         indir[fullname].update(indirect_calls)
@@ -367,9 +349,9 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     logging.info(longest[:20])
     calls = 0
     for v in result:
-        calls += len(v[2].values())
-        calls += len(v[3].values())
-        calls += len(v[4].values())
+        calls += len(v[2])
+        calls += len(v[3])
+        calls += len(v[4])
     logging.info('total number of calls: %d', calls)
 #    logging.info('total number of calls: %d', sum(len(v[3].values()) +
 #                                                  len(v[2].values()) +
