@@ -2,6 +2,7 @@ import logging
 import os
 import tempfile
 import unittest
+import collections
 
 from librarytrader.library import Library
 from librarytrader.librarystore import LibraryStore
@@ -228,6 +229,8 @@ class TestLibrary(unittest.TestCase):
     def _convert_numeric_dict(self, lib, num_dict):
         text_dict = {}
         for caller, callees in num_dict.items():
+            if not callees or caller not in lib.exported_addrs:
+                continue
             text_key = lib.exported_addrs[caller][0]
             text_value = set(lib.exported_addrs[c][0] for c in callees)
             text_dict[text_key] = text_value
@@ -237,9 +240,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls = {}
+        calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
-            calls.update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
+            calls[start].update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -249,9 +252,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
 
-        calls = {}
+        calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
-            calls.update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
+            calls[start].update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         self.assertEqual(len(calls), 4)
@@ -261,9 +264,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls = {}
+        calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
-            calls.update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
+            calls[start].update(resolve_calls_in_library(lib, start, size, disassemble_capstone)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
@@ -274,9 +277,9 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
 
-        calls = {}
+        calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
-            calls.update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
+            calls[start].update(resolve_calls_in_library(lib, start, size, disassemble_objdump)[0])
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
