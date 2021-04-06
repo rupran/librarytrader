@@ -828,7 +828,7 @@ class Library:
                     continue
 
         if not symtab:
-            return
+            return False
 
         sorted_ranges = sorted(self.ranges.items())
         for _, symbol in self._get_function_symbols(symtab, prefix_local=True):
@@ -905,6 +905,8 @@ class Library:
             external_elf.stream.close()
             del external_elf
 
+        return True
+
     def get_capstone_object(self):
         # Create a Cs object with the right machine type
         arch = capstone.CS_ARCH_X86
@@ -960,11 +962,12 @@ class Library:
         self.parse_dynsym()
         self.parse_plt()
         self.parse_plt_got()
-        self.parse_symtab()
+        has_symtab = self.parse_symtab()
         self.parse_rela_dyn()
         if self.entrypoint:
             self.function_addrs.add(self.entrypoint)
-        self._postprocess_ranges()
+        if has_symtab:
+            self._postprocess_ranges()
         if release:
             self._release_elffile()
 
