@@ -12,6 +12,7 @@ setup(
     zip_safe = False,
     install_requires = [
         'pyelftools',
-        'capstone'
+        'capstone>=4',
+        'pylibdebuginfod'
     ]
 )

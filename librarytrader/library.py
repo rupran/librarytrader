@@ -30,11 +30,13 @@ from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
 from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
     ENUM_RELOC_TYPE_AARCH64
+from libdebuginfod import DebugInfoD
 
 DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug')
 BUILDID_DIR = os.path.join(os.sep, DEBUG_DIR, '.build-id')
 EXTERNAL_DEBUG_DIR = os.environ.get('EXTERNAL_DEBUG_DIR')
 EXTERNAL_BUILDID_DIR = os.environ.get('EXTERNAL_BUILDID_DIR')
+USE_DEBUGINFOD = os.environ.get('USE_DEBUGINFOD')
 
 def _round_up_to_alignment(size, alignment):
     if size == 0:
@@ -788,6 +790,7 @@ class Library:
         external_elf = None
         symtab = self._elffile.get_section_by_name('.symtab')
         if not symtab:
+            logging.debug('looking for external file with .symtab')
             paths = [os.path.join(DEBUG_DIR, self.fullname[1:])]
             if EXTERNAL_DEBUG_DIR:
                 for debug_path in EXTERNAL_DEBUG_DIR.split(':'):
@@ -812,6 +815,18 @@ class Library:
                         paths.insert(0, os.path.join(EXTERNAL_BUILDID_DIR,
                                                      build_id_folder,
                                                      build_id_file))
+                    if USE_DEBUGINFOD:
+                        logging.debug('trying to query debuginfod')
+                        try:
+                            with DebugInfoD() as debuginfod:
+                                fd, path = debuginfod.find_debuginfo(build_id)
+                                if fd > 0:
+                                    os.close(fd)
+                                    paths.insert(0, path)
+                                    logging.debug('debuginfod found file at %s', path)
+                        except Exception as e:
+                            logging.debug('debuginfod query failed: %s', e)
+
             for path in paths:
                 if not os.path.isfile(path):
                     continue
