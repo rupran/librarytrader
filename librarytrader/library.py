@@ -788,6 +788,8 @@ class Library:
 
     def parse_symtab(self):
         external_elf = None
+        external_path = None
+        build_id = None
         symtab = self._elffile.get_section_by_name('.symtab')
         if not symtab:
             logging.debug('looking for external file with .symtab')
@@ -815,17 +817,6 @@ class Library:
                         paths.insert(0, os.path.join(EXTERNAL_BUILDID_DIR,
                                                      build_id_folder,
                                                      build_id_file))
-                    if USE_DEBUGINFOD:
-                        logging.debug('trying to query debuginfod')
-                        try:
-                            with DebugInfoD() as debuginfod:
-                                fd, path = debuginfod.find_debuginfo(build_id)
-                                if fd > 0:
-                                    os.close(fd)
-                                    paths.insert(0, path)
-                                    logging.debug('debuginfod found file at %s', path)
-                        except Exception as e:
-                            logging.debug('debuginfod query failed: %s', e)
 
             for path in paths:
                 if not os.path.isfile(path):
@@ -834,16 +825,31 @@ class Library:
                     external_elf = ELFFile(open(path, 'rb'))
                     symtab = external_elf.get_section_by_name('.symtab')
                     if symtab:
-                        logging.debug('Found external symtab for %s at %s',
-                                      self.fullname, path)
+                        external_path = path
                         break
                 except (ELFError, OSError) as err:
                     logging.debug('Failed to open external symbol table for %s at %s: %s',
                                   self.fullname, path, err)
                     continue
 
+        # If local paths failed, try debuginfod if requested
+        if not symtab and USE_DEBUGINFOD and build_id:
+            logging.debug('No local .symtab file, trying to query debuginfod')
+            try:
+                with DebugInfoD() as debuginfod:
+                    fd, path = debuginfod.find_debuginfo(build_id)
+                    if fd > 0:
+                        external_elf = ELFFile(os.fdopen(fd, 'rb'))
+                        symtab = external_elf.get_section_by_name('.symtab')
+                        external_path = path
+            except (ELFError, OSError, FileNotFoundError) as e:
+                logging.debug('debuginfod query failed: %s', e)
+
         if not symtab:
             return False
+        else:
+            logging.debug('Found external symtab for %s at %s', self.fullname,
+                          external_path)
 
         sorted_ranges = sorted(self.ranges.items())
         for _, symbol in self._get_function_symbols(symtab, prefix_local=True):
