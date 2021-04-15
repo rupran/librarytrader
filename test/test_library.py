@@ -60,13 +60,13 @@ class TestLibrary(unittest.TestCase):
         store = LibraryStore(ldconfig_file=LDCONFIG_FILE)
         # Makefile isn't an ELF file, so we fail in store._get_or_create_library
         store.resolve_libs_single_by_path(os.path.abspath(FILE_PATH + 'Makefile'))
-        self.assertEquals(len(store.items()), 0)
+        self.assertEqual(len(store.items()), 0)
 
     def test_0_find_export(self):
         libc = Library(os.path.abspath(TEST_LIBC), parse=True)
         versioned_addr = libc.find_export('malloc@@GLIBC_2.2.5')
         unversioned_addr = libc.find_export('malloc')
-        self.assertEquals(versioned_addr, unversioned_addr)
+        self.assertEqual(versioned_addr, unversioned_addr)
 
     def test_0_resolve_libs_single(self):
         store, lib = create_store_and_lib()
@@ -105,8 +105,8 @@ class TestLibrary(unittest.TestCase):
         store.resolve_libs_single_by_path(os.path.abspath(TEST_LIBC_LNK))
 
         # libc.so.6 -> libc-2.23.so and libc-2.23.so
-        self.assertEquals(len(store.items()), 2)
-        self.assertEquals(store.get_from_path(os.path.abspath(TEST_LIBC_LNK)),
+        self.assertEqual(len(store.items()), 2)
+        self.assertEqual(store.get_from_path(os.path.abspath(TEST_LIBC_LNK)),
                           store[os.path.abspath(TEST_LIBC)])
 
     def test_1_resolve_libs_recursive(self):
@@ -158,15 +158,15 @@ class TestLibrary(unittest.TestCase):
         # which is at rpath_dir/rpath_subdir -> inherited discovery
         # rpath_dir/rpath_subdir/librpath_three.so has RUNPATH '.' and needs
         # librunpath.so -> runpath discovery
-        self.assertEquals(os.path.abspath(TEST_RPATH_2),
+        self.assertEqual(os.path.abspath(TEST_RPATH_2),
                           one.needed_libs['librpath_two.so'])
 
         two = store[os.path.abspath(TEST_RPATH_2)]
-        self.assertEquals(os.path.abspath(TEST_RPATH_3),
+        self.assertEqual(os.path.abspath(TEST_RPATH_3),
                           two.needed_libs['librpath_three.so'])
 
         three = store[os.path.abspath(TEST_RPATH_3)]
-        self.assertEquals(os.path.abspath(TEST_RUNPATH),
+        self.assertEqual(os.path.abspath(TEST_RUNPATH),
                           three.needed_libs['librunpath.so'])
 
     def test_2_resolution_with_fs_search(self):
@@ -178,7 +178,7 @@ class TestLibrary(unittest.TestCase):
         # so our resolution has to do a file system search.
 
         # Make sure we found the library
-        self.assertEquals(os.path.abspath(TEST_NOLDCONF),
+        self.assertEqual(os.path.abspath(TEST_NOLDCONF),
                           search.needed_libs['libnoldconfig.so'])
 
     def test_2_resolution_with_ld_library_path(self):
@@ -199,7 +199,7 @@ class TestLibrary(unittest.TestCase):
 
         # Assert we found the library in the LD_LIBRARY_PATH instead of the
         # one from the ldconfig file.
-        self.assertEquals(os.path.abspath(TEST_LDLIBC),
+        self.assertEqual(os.path.abspath(TEST_LDLIBC),
                           lib.needed_libs['libc.so.6'])
 
     def test_3_resolve_imports_to_library(self):
@@ -270,7 +270,7 @@ class TestLibrary(unittest.TestCase):
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
-        self.assertEquals(len(calls), 4)
+        self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
 
     def test_4_resolve_calls_by_objdump_plt(self):
@@ -283,7 +283,7 @@ class TestLibrary(unittest.TestCase):
         calls = self._convert_numeric_dict(lib, calls)
 
         # The results should match the variant with symbolic functions
-        self.assertEquals(len(calls), 4)
+        self.assertEqual(len(calls), 4)
         self.assertDictEqual(calls, self.call_result)
 
     def test_4_resolve_calls_integrated(self):
@@ -477,13 +477,13 @@ class TestLibrary(unittest.TestCase):
         _, library = create_store_and_lib(TEST_LIBRARY)
         searched_plt = library._search_for_plt()
         section_plt = library._elffile.get_section_by_name('.plt')
-        self.assertEquals(searched_plt['sh_offset'], section_plt['sh_offset'])
+        self.assertEqual(searched_plt['sh_offset'], section_plt['sh_offset'])
 
     def test_7_dynamic_rela_plt(self):
         _, library = create_store_and_lib(TEST_LIBRARY)
         searched_plt = library._create_mock_rela_plt()
         section_plt = library._elffile.get_section_by_name('.rela.plt')
-        self.assertEquals(searched_plt['sh_offset'], section_plt['sh_offset'])
+        self.assertEqual(searched_plt['sh_offset'], section_plt['sh_offset'])
 
     def test_8_init_fini(self):
         store, library = create_store_and_lib(TEST_INITFINI,
