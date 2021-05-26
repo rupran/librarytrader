@@ -809,6 +809,7 @@ class LibraryStore(BaseStore):
                     load_ordered_dict_from_list(content, library, "imported_objs_locations")
                     load_ordered_dict_from_list(content, library, "local_objs")
                     load_dict_with_set_values(content, library, "object_to_functions", int)
+                    load_dict_with_set_values(content, library, "object_to_objects", int)
                     load_dict_with_set_values(content, library, "export_object_refs", int)
                     load_dict_with_set_values(content, library, "local_object_refs", int)
                     load_dict_with_set_values(content, library, "import_object_refs", int)
