@@ -408,12 +408,16 @@ class TestLibrary(unittest.TestCase):
     def test_6_propagate_calls_through_objects(self):
         store = LibraryStore()
 
+        os.environ['ALL_FUNCTIONS_FROM_OBJECTS'] = "1"
+
         for elf in (TEST_STRUCTS, TEST_LIBSTRUCT):
             store.resolve_libs_recursive_by_path(os.path.abspath(elf))
 
         resolve_calls(store)
         store.resolve_all_functions()
         store.propagate_call_usage()
+
+        del os.environ['ALL_FUNCTIONS_FROM_OBJECTS']
 
         library = store.get_from_path(os.path.abspath(TEST_LIBSTRUCT))
         self.assertIn(os.path.abspath(TEST_STRUCTS),
@@ -424,12 +428,16 @@ class TestLibrary(unittest.TestCase):
     def test_6_propagate_calls_through_objects_32_bit(self):
         store = LibraryStore()
 
+        os.environ['ALL_FUNCTIONS_FROM_OBJECTS'] = "1"
+
         for elf in (TEST_STRUCTS32, TEST_LIBSTRUCT32):
             store.resolve_libs_recursive_by_path(os.path.abspath(elf))
 
         resolve_calls(store)
         store.resolve_all_functions()
         store.propagate_call_usage()
+
+        del os.environ['ALL_FUNCTIONS_FROM_OBJECTS']
 
         library = store.get_from_path(os.path.abspath(TEST_LIBSTRUCT32))
         self.assertIn(os.path.abspath(TEST_STRUCTS32),

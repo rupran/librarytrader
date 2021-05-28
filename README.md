@@ -160,6 +160,21 @@ filesystem of Linux. Note that the optional `all_entries` parameter defaults
 to `True` for this function as the static analysis might have missed some
 connections which the dynamic analysis then might discover.
 
+### Environment variables
+
+You can influence some specific behaviour of the ELF file parser and usage
+information propagation through setting the environment variables below.
+
+| Environment variable          | Description                                  |
+|-------------------------------|----------------------------------------------|
+| `LD_LIBRARY_PATH`             | Basically the same as in the loader, the colon-separated paths in this variable are searched for matching libraries before the ld.so cache |
+| `EXTRA_LIBRARY_PATH`          | Works like LD_LIBRARY_PATH, except it does not influence the loader itself so it can be used to run the analysis with modified libraries which would otherwise be used by Python |
+| `EXTERNAL_DEBUG_DIR`          | A colon-separated list of paths where external ELF files with debug information are searched. Possible locations for a file originally located at `/lib/libexample.so` under these directories are `libexample.so`, `libexample.so.debug`, `lib/libexample.so` and `lib/libexample.so.debug` |
+| `EXTERNAL_BUILDID_DIR`        | A colon-separated list of paths where external ELF files with debug informations are located using the build ID identification method. The checked location under the directory is `build_id[:2]/build_id[2:].debug` |
+| `USE_DEBUGINFOD`              | If set to a non-zero value, the library parsing process will query [debuginfod](https://sourceware.org/elfutils/Debuginfod.html) servers for ELF files with debug information if no local files were found. |
+| `NOTYPE_AS_FUNCTION`          | If set, imported symbols with type `STT_NOTYPE` will be treated as if they were `STT_FUNC`. This can be useful for analyzing external modules from Apache, for example, as imported functions from the Apache runtime will have their type set to `STT_NOTYPE`.
+| `ALL_FUNCTIONS_FROM_OBJECTS`  | If set, a reference to an object containing function pointers will mark all function pointers in the object as used. While this increases static coverage of possibly required functions, it can lead to a very high overapproximation depending on the structure of the target library (i.e., if most functions are referenced from a structure which is initialized but never actually used)
+
 ## Analyzing a collection of object files
 
 If you know the set of ELF files you would like to analyze but do not

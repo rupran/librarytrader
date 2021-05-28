@@ -212,6 +212,8 @@ class LibraryStore(BaseStore):
             return self.get_all_reachable_from_executables()
 
     def _resolve_object_to_functions(self, library, source_object):
+        if 'ALL_FUNCTIONS_FROM_OBJECTS' not in os.environ:
+            return set()
         worklist = set([source_object])
         worked_on = set()
         result = set()
