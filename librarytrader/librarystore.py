@@ -742,6 +742,8 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "local_object_refs")
                 dump_dict_with_set_value(lib_dict, content, "import_object_refs")
                 dump_dict_with_set_value(lib_dict, content, "object_users")
+                dump_ordered_dict_as_list(lib_dict, content, "reloc_to_local")
+                dump_ordered_dict_as_list(lib_dict, content, "reloc_to_exported")
                 lib_dict["init_functions"] = content.init_functions
                 lib_dict["fini_functions"] = content.fini_functions
 
@@ -814,6 +816,8 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "local_object_refs", int)
                     load_dict_with_set_values(content, library, "import_object_refs", int)
                     load_dict_with_set_values(content, library, "object_users", int)
+                    load_ordered_dict_from_list(content, library, "reloc_to_local")
+                    load_ordered_dict_from_list(content, library, "reloc_to_exported")
                     library.init_functions = content.get("init_functions", [])
                     library.fini_functions = content.get("fini_functions", [])
 

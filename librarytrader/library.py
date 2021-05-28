@@ -126,6 +126,11 @@ class Library:
         # external users of objects: address -> list of referencing library paths
         self.object_users = collections.OrderedDict()
 
+        # RELATIVE relocations pointing to local functions
+        self.reloc_to_local = collections.OrderedDict()
+        # RELATIVE relocations pointing to exported functions
+        self.reloc_to_exported = collections.OrderedDict()
+
         self.rpaths = []
         self.runpaths = []
         self.soname = None
@@ -744,9 +749,12 @@ class Library:
                     start, size = (left_offset, self.object_ranges[left_offset])
                     if got_offset not in range(start, start + size):
                         continue
-                    if location in self.exported_addrs or \
-                            location in self.local_functions:
+                    if location in self.exported_addrs:
                         self.object_to_functions[start].add(location)
+                        self.reloc_to_exported[got_offset] = location
+                    elif location in self.local_functions:
+                        self.object_to_functions[start].add(location)
+                        self.reloc_to_local[got_offset] = location
                     elif location in self.exported_objs or \
                             location in self.local_objs:
                         self.object_to_objects[start].add(location)

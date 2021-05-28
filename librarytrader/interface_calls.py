@@ -189,6 +189,10 @@ def find_calls_from_capstone(library, disas):
                     thunk_reg = capstone.x86.X86_REG_EDX
                     thunk_val = instr.address + instr.size
                 calls_to_locals.add(target)
+            elif target in library.reloc_to_local:
+                calls_to_locals.add(library.reloc_to_local[target])
+            elif target in library.reloc_to_exported:
+                calls_to_exports.add(library.reloc_to_exported[target])
             else:
                 # Some handwritten assembly code might jump into a function
                 # range (for example, to skip the function prologue).
