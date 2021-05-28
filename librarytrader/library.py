@@ -703,6 +703,7 @@ class Library:
                     # Relocations might point into the middle of an object,
                     # so we fix up the offset to the beginning of the
                     # corresponding object to mark the reference
+                    orig_offset = got_offset
                     start_of_object = True
                     ins_point = bisect.bisect(sorted_obj_ranges, got_offset)
                     if ins_point != 0:
@@ -727,7 +728,7 @@ class Library:
                         self.object_to_objects[got_offset].add(symbol['st_value'])
                     else:
                         self.object_to_functions[got_offset].add(self._get_symbol_offset(symbol))
-#                        self.exports_plt[got_offset] = self._get_symbol_offset(symbol)
+                        self.exports_plt[orig_offset] = self._get_symbol_offset(symbol)
 
         # This needs to be in a separate loop as the other relocation types
         # might have added entries to self.exported_objs, and the relocations
