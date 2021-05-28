@@ -8,6 +8,7 @@ A library to gather imports and exports of ELF shared libraries
 - Python 3
 - pyelftools, available from **pip** or at https://github.com/eliben/pyelftools
 - capstone, available from **pip** or at https://github.com/aquynh/capstone
+- pylibdebuginfod, available from **pip** or at https://github.com/rupran/pylibdebuginfod
 
 ## How to use it?
 
