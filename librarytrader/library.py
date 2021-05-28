@@ -481,7 +481,7 @@ class Library:
             cur_offset = array
             while cur_offset < array + array_size:
                 self.fd.seek(cur_offset)
-                target_list.append(struct.unpack(fmt, self.fd.read(pointer_size))[0])
+                target_list.append(struct.unpack(fmt, self.fd.read(pointer_size))[0] - self.load_offset)
                 cur_offset += pointer_size
 
         if init_array is not None and init_arraysz != 0:
