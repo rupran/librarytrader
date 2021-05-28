@@ -277,12 +277,17 @@ def find_calls_from_capstone(library, disas):
                     calls_to_locals.add(addr)
                 elif addr in library.imports_plt:
                     calls_to_imports.add(library.imports_plt[addr])
-                elif addr in library.exported_objs:
-                    exported_object_refs.add(addr)
-                elif addr in library.imported_objs:
-                    imported_object_refs.add(addr)
-                elif addr in library.local_objs:
-                    local_object_refs.add(addr)
+                else:
+                    # Objects are currently referenced with the load offset
+                    # added, so we need to incorporate it when checking against
+                    # the objects in the library.
+                    addr += library.load_offset
+                    if addr in library.exported_objs:
+                        exported_object_refs.add(addr)
+                    elif addr in library.imported_objs:
+                        imported_object_refs.add(addr)
+                    elif addr in library.local_objs:
+                        local_object_refs.add(addr)
 
     return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
             imported_object_refs, exported_object_refs, local_object_refs)
