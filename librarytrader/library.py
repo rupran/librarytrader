@@ -856,7 +856,7 @@ class Library:
 
         if not symtab:
             return False
-        else:
+        elif external_path:
             logging.debug('Found external symtab for %s at %s', self.fullname,
                           external_path)
 
