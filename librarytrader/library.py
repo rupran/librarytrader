@@ -405,7 +405,7 @@ class Library:
                 #TODO: what to do here?
                 #self.imported_objs_locations[name] = None
             else:
-                addr = symbol['st_value']
+                addr = self._get_symbol_offset(symbol)
                 if not addr:
                     continue
                 # STB_LOOS objects are of type STB_GNU_UNIQUE for SYSV binaries
@@ -684,7 +684,7 @@ class Library:
 
         sorted_obj_ranges = sorted(self.object_ranges.keys())
         for reloc in dynrel.iter_relocations():
-            got_offset = reloc['r_offset']
+            got_offset = reloc['r_offset'] - self.load_offset
             symbol_idx = reloc['r_info_sym']
             reloc_type = reloc['r_info_type']
             if reloc_type in (target_reloc_type, ptr_reloc_type):
@@ -730,7 +730,7 @@ class Library:
                             self.exported_objs[got_offset].append(self._get_versioned_name(symbol, symbol_idx))
                         # Additionally, we mark a connection between the GOT
                         # enty and the object behind it
-                        self.object_to_objects[got_offset].add(symbol['st_value'])
+                        self.object_to_objects[got_offset].add(self._get_symbol_offset(symbol))
                     else:
                         self.object_to_functions[got_offset].add(self._get_symbol_offset(symbol))
                         self.exports_plt[orig_offset] = self._get_symbol_offset(symbol)
@@ -739,7 +739,7 @@ class Library:
         # might have added entries to self.exported_objs, and the relocations
         # processed in this loop might reference such new entries.
         for reloc in dynrel.iter_relocations():
-            got_offset = reloc['r_offset']
+            got_offset = reloc['r_offset'] - self.load_offset
             reloc_type = reloc['r_info_type']
             if reloc_type == fptr_reloc_type:
                 location = self._get_addend(reloc)
@@ -916,7 +916,7 @@ class Library:
                 #TODO: what to do here?
                 #self.imported_objs_locations[name] = None
             else:
-                addr = symbol['st_value']
+                addr = self._get_symbol_offset(symbol)
                 if not addr:
                     continue
                 if symbol_bind in ('STB_GLOBAL', 'STB_WEAK', 'STB_LOOS'):
