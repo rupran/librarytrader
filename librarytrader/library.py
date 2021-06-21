@@ -37,6 +37,7 @@ BUILDID_DIR = os.path.join(os.sep, DEBUG_DIR, '.build-id')
 EXTERNAL_DEBUG_DIR = os.environ.get('EXTERNAL_DEBUG_DIR')
 EXTERNAL_BUILDID_DIR = os.environ.get('EXTERNAL_BUILDID_DIR')
 USE_DEBUGINFOD = os.environ.get('USE_DEBUGINFOD')
+FIXUP_FUNCTION_RANGES = os.environ.get('FIXUP_FUNCTION_RANGES')
 
 def _round_up_to_alignment(size, alignment):
     if size == 0:
@@ -956,6 +957,8 @@ class Library:
         # Check the gaps between recognized functions. If they only consist of
         # NOPs, extend the previous function to include the NOPs as well and
         # hence close the 'useless' gap between consecutive functions.
+        if not FIXUP_FUNCTION_RANGES:
+            return
         ranges_list = sorted(self.ranges.items())
         for idx, (start, size) in enumerate(ranges_list[:-1]):
             cur_end = start + size
