@@ -631,6 +631,23 @@ class LibraryStore(BaseStore):
                 addr = library_object.exported_names['main']
                 logging.debug('adding %s:main to worklist', lib)
                 worklist.add((library_object, addr))
+                #user_dict[(lib, addr)].add('MAINUSER')
+            # ... the entry point address if we're not looking at a library
+            if '.so' not in library_object.fullname and \
+                    library_object.entrypoint in library_object.local_functions:
+                logging.debug('adding %s:entrypoint (%x/%s) to worklist', lib,
+                              library_object.entrypoint,
+                              library_object.local_functions[library_object.entrypoint])
+                worklist.add((library_object, library_object.entrypoint))
+                library_object.add_export_user(library_object.entrypoint, 'ENTRYUSER')
+            # ... (the entry point function can also be global) ...
+            if '.so' not in library_object.fullname and \
+                    library_object.entrypoint in library_object.exported_addrs:
+                logging.debug('adding %s:entrypoint (%x/%s) to worklist', lib,
+                              library_object.entrypoint,
+                              library_object.exported_addrs[library_object.entrypoint])
+                worklist.add((library_object, library_object.entrypoint))
+                library_object.add_export_user(library_object.entrypoint, 'ENTRYUSER')
             # ... all initialization functions...
             for addr in library_object.init_functions:
                 library_object.add_export_user(addr, 'INITUSER')
