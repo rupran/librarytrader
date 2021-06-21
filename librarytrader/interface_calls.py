@@ -328,10 +328,13 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     #libs = [(lib.fullname, start, size) for lib in store.get_library_objects() \
     #            for start, size in lib.ranges.items()]
     # Pass by object (-> threads need to open only)
-    calls = [(lib, start, size) for lib in store.get_library_objects() for start, size in lib.ranges.items()]
     logging.info('Searching for calls in %d libraries...', len(store.get_library_objects()))
     pool = multiprocessing.Pool(n_procs)
-    result = pool.map(map_wrapper, calls, chunksize=100)
+    result = pool.imap_unordered(map_wrapper,
+                                 ((lib, start, size) \
+                                    for lib in store.get_library_objects() \
+                                        for start, size in lib.ranges.items()),
+                                 chunksize=100)
     pool.close()
 
     indir = {}
@@ -348,7 +351,9 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
             indir[fullname] = set()
         indir[fullname].update(indirect_calls)
 
+    pool.join()
     logging.info('... done!')
+
     longest = [(v[0], v[1], v[9]) for v in sorted(result, key=lambda x: -x[9])]
     logging.info(longest[:20])
     calls = 0
