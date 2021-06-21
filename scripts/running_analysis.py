@@ -170,7 +170,7 @@ class Runner():
         return result
 
     def _process_interface_calls(self):
-        return resolve_calls(self.store)
+        resolve_calls(self.store)
 
     def get_all_resolved_functions(self):
         if self.all_resolved_functions is None:

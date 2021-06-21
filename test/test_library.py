@@ -289,9 +289,7 @@ class TestLibrary(unittest.TestCase):
     def test_4_resolve_calls_integrated(self):
         store, lib = create_store_and_lib(resolve_libs_recursive=True)
 
-        result = resolve_calls(store)
-        # calls for mock.so, libc-2.23.so and ld-2.23.so
-        self.assertEqual(len(set(res[0] for res in result)), 3)
+        resolve_calls(store)
         call_result = self._convert_numeric_dict(lib, lib.internal_calls)
         self.assertDictEqual(call_result,
                              self.call_result)

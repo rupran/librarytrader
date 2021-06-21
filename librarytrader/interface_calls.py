@@ -338,7 +338,7 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     pool.close()
 
     indir = {}
-
+    calls = 0
     for fullname, start, internal_calls, external_calls, local_calls, indirect_calls, \
             imported_uses, exported_uses, local_uses, _ in result:
         store[fullname].internal_calls[start].update(internal_calls)
@@ -350,23 +350,9 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
         if fullname not in indir:
             indir[fullname] = set()
         indir[fullname].update(indirect_calls)
+        calls += len(internal_calls) + len(external_calls) + len(local_calls)
 
     pool.join()
     logging.info('... done!')
-
-    longest = [(v[0], v[1], v[9]) for v in sorted(result, key=lambda x: -x[9])]
-    logging.info(longest[:20])
-    calls = 0
-    for v in result:
-        calls += len(v[2])
-        calls += len(v[3])
-        calls += len(v[4])
     logging.info('total number of calls: %d', calls)
-#    logging.info('total number of calls: %d', sum(len(v[3].values()) +
-#                                                  len(v[2].values()) +
-#                                                  len(v[1].values())
-#                                                  for v in result))
-    #for p, i in sorted(indir.items(), key=lambda x: -len(x[1])):
-    #    logging.info('indir[%s] = %d', p, len(i))
     logging.info('indirect calls: %d', sum(len(x) for x in indir.values()))
-    return result
