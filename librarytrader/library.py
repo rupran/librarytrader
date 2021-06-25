@@ -136,6 +136,7 @@ class Library:
         self.runpaths = []
         self.soname = None
         self.init_functions = []
+        self._init_range = None
         self.fini_functions = []
 
         self.ranges = {}
@@ -489,6 +490,7 @@ class Library:
 
         if init_array is not None and init_arraysz != 0:
             logging.debug('DT_INIT_ARRAY at %x, length %d', init_array, init_arraysz)
+            self._init_range = (init_array, init_array + init_arraysz)
             _process_function_array(init_array, init_arraysz, self.init_functions)
 
         if fini_array is not None and fini_arraysz != 0:
@@ -762,6 +764,20 @@ class Library:
                             location in self.local_objs:
                         self.object_to_objects[start].add(location)
 
+        # Check if any ptr_reloc_type relocations are written into the
+        # INIT_ARRAY address range and note their targets in the list of init
+        # functions.
+        if self._init_range:
+            for reloc in dynrel.iter_relocations():
+                if reloc['r_info_type'] == ptr_reloc_type:
+                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
+                    if real_offset in range(*self._init_range):
+                        symbol_idx = reloc['r_info_sym']
+                        symbol = dynsym.get_symbol(symbol_idx)
+                        self.init_functions.append(self._get_symbol_offset(symbol))
+                        logging.debug('%s: relocation into init: %x -> %s',
+                                      self.fullname, real_offset,
+                                      self._get_versioned_name(symbol, symbol_idx))
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
