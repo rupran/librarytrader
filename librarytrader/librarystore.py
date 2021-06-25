@@ -298,8 +298,8 @@ class LibraryStore(BaseStore):
                 else:
                     continue
                 if target_lib is None:
-                    logging.warning('%s: reference to unknown target for object %s',
-                                    libname, callee)
+                    logging.warning('%s: reference to unknown target for object %s in function %x',
+                                    libname, callee, function)
                     continue
                 callee_addr = target_lib.find_object(name)
                 if callee_addr is None:
