@@ -212,13 +212,21 @@ class LibraryStore(BaseStore):
             return self.get_all_reachable_from_executables()
 
     def _resolve_object_to_functions(self, library, source_object):
-        if 'ALL_FUNCTIONS_FROM_OBJECTS' not in os.environ:
-            return set()
         worklist = set([source_object])
         worked_on = set()
         result = set()
+        ptr_size = 4 if library.is_i386() else 8
         while worklist:
             cur_obj = worklist.pop()
+            # If we do not want all functions pulled in, check if the object
+            # is one single pointer long. if this is not the case, ignore this
+            # object, otherwise pull other objects and functions in. Note that
+            # relocations get entries in the object_to_* dictionaries but not
+            # in object_ranges, so default to ptr_size if we do not have a size
+            # for the currently processed object.
+            if 'ALL_FUNCTIONS_FROM_OBJECTS' not in os.environ and \
+                    library.object_ranges.get(cur_obj, ptr_size) != ptr_size:
+                continue
             # Recursive reference to object -> add to worklist and process later
             if cur_obj in library.object_to_objects and cur_obj not in worked_on:
                 worklist.update(library.object_to_objects[cur_obj])
