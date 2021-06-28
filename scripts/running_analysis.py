@@ -192,12 +192,15 @@ class Runner():
                 if function.startswith('LOCAL_'):
                     if function[6:].isdigit():
                         addrs.add(int(function[6:]))
+                    elif function[6:].startswith('0x'):
+                        addrs.add(int(function[8:], base=16))
                     else:
                         addrs.update(library.find_local_functions(function[6:]))
-                    logging.debug('_mark_extra_functions: found local function \'%s\' at %s',
-                                  function[6:], addrs)
+                        logging.debug('_mark_extra_functions: found match for '\
+                                      'local function pattern \'%s\' at %s',
+                                        function[6:], addrs)
                 else:
-                    addrs.add(library.find_export(function))
+                    addrs.update(library.find_exports_by_pattern(function))
                 if not addrs:
                     logging.warning('mark_extra: %s not found in %s', function,
                                     library.fullname)

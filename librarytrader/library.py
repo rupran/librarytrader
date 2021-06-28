@@ -19,6 +19,7 @@ import bisect
 import collections
 import logging
 import os
+import re
 import struct
 
 import capstone
@@ -1076,9 +1077,13 @@ class Library:
             return self.exported_obj_names[requested_name.split('@@')[0]]
         return None
 
-    def find_local_functions(self, requested_name):
-        return set(addr for addr, names in self.local_functions.items() \
-                   if requested_name in names)
+    def find_local_functions(self, requested_pattern):
+        retval = set()
+        for addr, names in self.local_functions.items():
+            if any(re.fullmatch(requested_pattern, name) for name in names):
+                retval.add(addr)
+
+        return retval
 
     def find_export(self, requested_name):
         # Direct match, name + version
@@ -1093,6 +1098,13 @@ class Library:
         if requested_name.split('@@')[0] in self.exported_names:
             return self.exported_names[requested_name.split('@@')[0]]
         return None
+
+    def find_exports_by_pattern(self, requested_pattern):
+        retval = set()
+        for name, addr in self.exported_names.items():
+            if re.fullmatch(requested_pattern, name):
+                retval.add(addr)
+        return retval
 
     def _get_names_for_addrs(self, addrs, name_dict):
         return set(name for addr in addrs for name in name_dict[addr])
