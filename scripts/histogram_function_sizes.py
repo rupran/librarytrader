@@ -2,6 +2,7 @@
 
 import collections
 import matplotlib.pyplot as plt
+import pandas
 import statistics
 import sys
 
@@ -14,46 +15,35 @@ print('Arguments: {} <librarystore> <output_filename> [cutoff_x]'.format(sys.arg
 print(' * Loading LibraryStore...')
 store = LibraryStore()
 store.load(sys.argv[1])
-print(' * ... done!')
-hist = collections.defaultdict(int)
+print('  * ... done!')
 
-n = 0
-print(' * Generating histogram...')
-for library in store.get_library_objects():
-    for value in library.ranges.values():
-        if value == 0:
-            continue
-        hist[value] += 1
-        n += 1
-print(' * ... done!')
+print(' * Collecting all non-zero ranges...')
+all_ranges = [size for library in store.get_library_objects()
+              for size in library.ranges.values() if size > 0]
+print('  * ... done!')
 
-xs = []
-ys = []
-for x, y in sorted(hist.items()):
-    xs.append(x)
-    ys.append(y)
+df = pandas.DataFrame(all_ranges, columns=["Function Size"])
 
-print(' * Statistics:')
-listed_items = []
-for size, number in sorted(hist.items()):
-    listed_items.extend([size] * number)
-
-print(len(listed_items), n)
-print(' * .. Mean:   {}'.format(statistics.mean(listed_items)))
-print(' * .. Median: {}'.format(statistics.median(listed_items)))
-print(' * .. Max:    {}'.format(listed_items[-1]))
-
-print(' * Plotting...')
-fig, ax = plt.subplots(figsize=(12.8,9.6))
-plt.bar(xs, ys, width=1.2)
 if len(sys.argv) >= 4:
     max_x = int(sys.argv[3])
 else:
     max_x = ax.get_xlim()[1]
-ax.set_xlim(-10, max_x)
+
+print(' * Statistics:')
+print('  * Number of ranges: {}'.format(len(all_ranges)))
+print('  * .. Mean:   {}'.format(df["Function Size"].mean()))
+print('  * .. Median: {}'.format(df["Function Size"].median()))
+print('  * .. Max:    {}'.format(df["Function Size"].max()))
+
+print(' * Plotting...')
+xlim = (-10, max_x)
+ax = df.plot.hist(xlim=xlim,
+                  bins=range(0, max_x+2, 1),
+                  figsize=(12.8, 9.6))
 plt.xlabel('Size of function in bytes')
 plt.ylabel('Number of functions with respective size')
-print(' * ... done!')
+print('  * ... done!')
 print(' * Saving to {}'.format(sys.argv[2]))
 plt.savefig(sys.argv[2])
+print('  * ... done!')
 plt.show()
