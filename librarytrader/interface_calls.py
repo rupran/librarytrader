@@ -340,7 +340,9 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     indir = {}
     calls = 0
     for fullname, start, internal_calls, external_calls, local_calls, indirect_calls, \
-            imported_uses, exported_uses, local_uses, _ in result:
+            imported_uses, exported_uses, local_uses, duration in result:
+        if not fullname:
+            continue
         store[fullname].internal_calls[start].update(internal_calls)
         store[fullname].external_calls[start].update(external_calls)
         store[fullname].local_calls[start].update(local_calls)
@@ -351,6 +353,7 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
             indir[fullname] = set()
         indir[fullname].update(indirect_calls)
         calls += len(internal_calls) + len(external_calls) + len(local_calls)
+        store[fullname].total_disas_time += duration
 
     pool.join()
     logging.info('... done!')

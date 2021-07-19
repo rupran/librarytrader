@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import struct
+import time
 
 import capstone
 from elftools.common.exceptions import ELFError
@@ -146,6 +147,9 @@ class Library:
         self.external_calls = collections.defaultdict(set)
         self.internal_calls = collections.defaultdict(set)
         self.local_calls = collections.defaultdict(set)
+
+        self.parse_time = 0
+        self.total_disas_time = 0
 
         if parse:
             self.parse_functions()
@@ -1011,6 +1015,7 @@ class Library:
                     self.ranges[start] += gap
 
     def parse_functions(self, release=False):
+        before = time.time()
         self.parse_versions()
         self.parse_dynamic()
         self.parse_dynsym()
@@ -1024,6 +1029,7 @@ class Library:
             self._postprocess_ranges()
         if release:
             self._release_elffile()
+        self.parse_time = time.time() - before
 
     def _release_elffile(self):
         del self._elffile

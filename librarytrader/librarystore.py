@@ -781,6 +781,8 @@ class LibraryStore(BaseStore):
 
                 lib_dict["defines_versions"] = content.defines_versions
                 lib_dict["version_descriptions"] = content.version_descriptions
+                lib_dict["parse_time"] = content.parse_time
+                lib_dict["total_disas_time"] = content.total_disas_time
 
             output[path] = lib_dict
 
@@ -857,6 +859,8 @@ class LibraryStore(BaseStore):
                     #print('{}: {}'.format(path, sorted(["calls"].items())))
                     library.defines_versions = content.get("defines_versions", False)
                     library.version_descriptions = content.get("version_descriptions", {})
+                    library.parse_time = float(content.get("parse_time", 0))
+                    library.total_disas_time = float(content.get("total_disas_time", 0))
                     self._add_library(path, library)
 
         logging.debug('... done with %s entries', len(self))
