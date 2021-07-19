@@ -239,6 +239,7 @@ class TestLibrary(unittest.TestCase):
     def test_4_resolve_calls_by_capstone(self):
         store, lib = create_store_and_lib()
         lib.parse_functions()
+        lib.sorted_ranges = sorted(lib.ranges.items())
 
         calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
@@ -263,6 +264,7 @@ class TestLibrary(unittest.TestCase):
     def test_4_resolve_calls_by_capstone_plt(self):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
+        lib.sorted_ranges = sorted(lib.ranges.items())
 
         calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():

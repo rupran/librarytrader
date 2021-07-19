@@ -196,13 +196,11 @@ def find_calls_from_capstone(library, disas):
             else:
                 # Some handwritten assembly code might jump into a function
                 # range (for example, to skip the function prologue).
-                ranges = library.get_function_ranges()
-                sorted_range = sorted(ranges.keys())
-                i = bisect_right(sorted_range, target)
+                i = bisect_right(library.sorted_ranges, (target,))
                 # lower and upper bound
-                if i == 0 or i == len(sorted_range) + 1:
+                if i == 0 or i == len(library.sorted_ranges) + 1:
                     continue
-                start, size = (sorted_range[i-1], ranges[sorted_range[i-1]])
+                start, size = library.sorted_ranges[i-1]
                 # jump into same range we're coming from
                 if instr.address in range(start, start + size):
                     continue
@@ -329,12 +327,17 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     #            for start, size in lib.ranges.items()]
     # Pass by object (-> threads need to open only)
     logging.info('Searching for calls in %d libraries...', len(store.get_library_objects()))
+    # Sort the range keys once to allow efficient searching for jumps into
+    # function boundaries
+    for lib in store.get_library_objects():
+        lib.sorted_ranges = sorted(lib.ranges.items())
+
     pool = multiprocessing.Pool(n_procs)
     result = pool.imap_unordered(map_wrapper,
                                  ((lib, start, size) \
                                     for lib in store.get_library_objects() \
                                         for start, size in lib.ranges.items()),
-                                 chunksize=100)
+                                 chunksize=2000)
     pool.close()
 
     indir = {}
@@ -356,6 +359,9 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
         store[fullname].total_disas_time += duration
 
     pool.join()
+    # Clean up library objects
+    for lib in store.get_library_objects():
+        del lib.sorted_ranges
     logging.info('... done!')
     logging.info('total number of calls: %d', calls)
     logging.info('indirect calls: %d', sum(len(x) for x in indir.values()))
