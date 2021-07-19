@@ -59,6 +59,8 @@ class Library:
             self.fd = open(filename, 'rb')
             self._elffile = ELFFile(self.fd)
             self.elfheader = self._elffile.header
+            self.e_machine = self.elfheader['e_machine']
+            self.ei_class = self.elfheader['e_ident']['EI_CLASS']
             text = self._elffile.get_section_by_name('.text')
             if not text:
                 for segment in self._elffile.iter_segments():
@@ -149,13 +151,13 @@ class Library:
             self.parse_functions()
 
     def is_i386(self):
-        return self.elfheader['e_machine'] == 'EM_386'
+        return self.e_machine == 'EM_386'
 
     def is_x86_64(self):
-        return self.elfheader['e_machine'] == 'EM_X86_64'
+        return self.e_machine == 'EM_X86_64'
 
     def is_aarch64(self):
-        return self.elfheader['e_machine'] == 'EM_AARCH64'
+        return self.e_machine == 'EM_AARCH64'
 
     def _get_symbol_offset(self, symbol):
         return symbol['st_value'] - self.load_offset
@@ -1029,10 +1031,7 @@ class Library:
         del self.fd
 
     def is_compatible(self, other):
-        hdr = self.elfheader
-        o_hdr = other.elfheader
-        return hdr['e_ident']['EI_CLASS'] == o_hdr['e_ident']['EI_CLASS'] and \
-            hdr['e_machine'] == o_hdr['e_machine']
+        return (self.ei_class, self.e_machine) == (other.ei_class, other.e_machine)
 
     def add_export_user(self, addr, user_path):
         if addr not in self.export_users:
