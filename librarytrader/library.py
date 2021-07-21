@@ -88,13 +88,13 @@ class Library:
         # exported_names: symbol name -> address
         self.exported_names = collections.OrderedDict()
         # export_users: address -> list of referencing library paths
-        self.export_users = collections.OrderedDict()
+        self.export_users = {}
         self.function_addrs = set()
         # imports: symbol name -> path to implementing library
         self.imports = collections.OrderedDict()
         # local functions: address -> symbol name
         self.local_functions = collections.defaultdict(list)
-        self.local_users = collections.OrderedDict()
+        self.local_users = {}
 
         # exports_plt: plt address -> implementing address
         self.exports_plt = collections.OrderedDict()
@@ -1042,8 +1042,6 @@ class Library:
     def add_export_user(self, addr, user_path):
         if addr not in self.export_users:
             if addr in self.local_functions:
-                logging.debug('%s: adding user to local function %x: %s',
-                              self.fullname, addr, user_path)
                 if addr not in self.local_users:
                     self.local_users[addr] = set()
                 if user_path not in self.local_users[addr]:
@@ -1053,8 +1051,6 @@ class Library:
                 logging.error('%s not found in %s (user would be %s)', addr,
                               self.fullname, user_path)
         elif user_path not in self.export_users[addr]:
-            logging.debug('%s: adding user to export function %x: %s',
-                          self.fullname, addr, user_path)
             self.export_users[addr].add(user_path)
             return True
         return False
