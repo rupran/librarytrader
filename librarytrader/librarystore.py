@@ -745,7 +745,6 @@ class LibraryStore(BaseStore):
                 dump_ordered_dict_as_list(lib_dict, content, "exported_names")
                 lib_dict["export_bind"] = content.export_bind
                 dump_dict_with_set_value(lib_dict, content, "export_users")
-                lib_dict["function_addrs"] = list(sorted(content.function_addrs))
                 dump_ordered_dict_as_list(lib_dict, content, "imports_plt")
                 dump_ordered_dict_as_list(lib_dict, content, "exports_plt")
                 dump_ordered_dict_as_list(lib_dict, content, "needed_libs")
@@ -823,7 +822,6 @@ class LibraryStore(BaseStore):
                     for key in library.exported_addrs.keys():
                         if key not in library.export_users:
                             library.export_users[key] = set()
-                    library.function_addrs = set(content.get("function_addrs", []))
                     load_ordered_dict_from_list(content, library, "imports_plt")
                     load_ordered_dict_from_list(content, library, "exports_plt")
                     load_ordered_dict_from_list(content, library, "needed_libs")
@@ -870,7 +868,7 @@ class LibraryStore(BaseStore):
         with open(output_name, 'w') as outfd:
             counter = 0
             for lib in self.get_entry_points(all_entries):
-                for address in lib.function_addrs:
+                for address in lib.ranges.keys():
                     event_name = 'trace_probe_{}'.format(counter)
                     counter += 1
                     outfd.write('u:{} {}:{}\n'.format(event_name,

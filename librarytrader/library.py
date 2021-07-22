@@ -89,7 +89,6 @@ class Library:
         self.exported_names = collections.OrderedDict()
         # export_users: address -> list of referencing library paths
         self.export_users = {}
-        self.function_addrs = set()
         # imports: symbol name -> path to implementing library
         self.imports = collections.OrderedDict()
         # local functions: address -> symbol name
@@ -347,7 +346,6 @@ class Library:
                 self.imports[name] = None
             else:
                 start = self._get_symbol_offset(symbol)
-                self.function_addrs.add(start)
                 if symbol_bind != 'STB_LOCAL':
                     name = self._get_versioned_name(symbol, idx)
                     if isinstance(name, bytes):
@@ -891,7 +889,6 @@ class Library:
             shndx = symbol['st_shndx']
             if shndx != 'SHN_UNDEF':
                 start = self._get_symbol_offset(symbol)
-                self.function_addrs.add(start)
                 size = symbol['st_size']
                 if start not in self.exported_addrs:
                     # Check if this function overlapping with another function
@@ -1023,8 +1020,8 @@ class Library:
         self.parse_plt_got()
         has_symtab = self.parse_symtab()
         self.parse_rela_dyn()
-        if self.entrypoint:
-            self.function_addrs.add(self.entrypoint)
+        if self.entrypoint and self.entrypoint not in self.ranges:
+            self.ranges[self.entrypoint] = 0
         if has_symtab:
             self._postprocess_ranges()
         if release:
