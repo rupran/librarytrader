@@ -810,8 +810,8 @@ class LibraryStore(BaseStore):
                             getattr(library, name)[key] = value
 
                     library.entrypoint = content["entrypoint"]
-                    library.e_machine = content["e_machine"]
-                    library.ei_class = content["ei_class"]
+                    library.e_machine = content.get("e_machine", None)
+                    library.ei_class = content.get("ei_class", None)
                     library.imports = content.get("imports", {})
                     load_ordered_dict_from_list(content, library, "exported_names")
                     library.exported_addrs = collections.defaultdict(list)
