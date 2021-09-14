@@ -91,6 +91,8 @@ class Runner():
         parser.add_argument('--loaderlike', action='store_true',
                             help='Resolve functions only from executables ' \
                             'while respecting weak symbols')
+        parser.add_argument('--write-csvs', action='store_true',
+                            help='write .csv files with statistics')
         self.args = parser.parse_args()
 
         loglevel = logging.WARNING
@@ -286,6 +288,9 @@ class Runner():
                 total_ipctg = int(total_pctg * 100)
                 histo_total[total_ipctg].append(lib)
 
+        if not self.args.write_csvs:
+            return
+
         with open('{}_import_use_histo.csv'.format(self.args.store), 'w') as outfd:
             for key in range(101):
                 outfd.write('{},{},{}\n'.format(key, len(histo_percent[key]), histo_percent[key]))
@@ -322,44 +327,48 @@ class Runner():
         for name, count in sorted_callees[:10]:
             print('{}\t{}'.format(name, count))
 
-        with open('{}_called_functions.csv'.format(self.args.store), 'w') as outfd:
-            for name, count in sorted_callees:
-                outfd.write('{},{}\n'.format(name, count))
+        if self.args.write_csvs:
+            with open('{}_called_functions.csv'.format(self.args.store), 'w') as outfd:
+                for name, count in sorted_callees:
+                    outfd.write('{},{}\n'.format(name, count))
 
         print('Top 10 NEEDED')
         sorted_needed = list(sorted(libobjs, key=lambda x: len(list(x.needed_libs)), reverse=True))
         for library in sorted_needed[:10]:
             print('{}: {}'.format(library.fullname, len(list(library.needed_libs))))
 
-        with open('{}_needed_libraries.csv'.format(self.args.store), 'w') as outfd:
-            for library in sorted_needed:
-                outfd.write('{},{}\n'.format(library.fullname, len(list(library.needed_libs))))
+        if self.args.write_csvs:
+            with open('{}_needed_libraries.csv'.format(self.args.store), 'w') as outfd:
+                for library in sorted_needed:
+                    outfd.write('{},{}\n'.format(library.fullname, len(list(library.needed_libs))))
 
         print('Top 10 importers:')
         top_importers = list(sorted(libobjs, key=lambda x: len(list(x.imports)), reverse=True))
         for library in top_importers[:10]:
             print('{}: {}'.format(library.fullname, len(list(library.imports))))
 
-        with open('{}_number_of_imports.csv'.format(self.args.store), 'w') as outfd:
-            for library in top_importers:
-                outfd.write('{},{}\n'.format(library.fullname, len(list(library.imports))))
+        if self.args.write_csvs:
+            with open('{}_number_of_imports.csv'.format(self.args.store), 'w') as outfd:
+                for library in top_importers:
+                    outfd.write('{},{}\n'.format(library.fullname, len(list(library.imports))))
 
-        with open('{}_imports_histo.csv'.format(self.args.store), 'w') as outfd:
-            for key, value in sorted(histo_in.items()):
-                outfd.write('{},{}\n'.format(key, value))
+            with open('{}_imports_histo.csv'.format(self.args.store), 'w') as outfd:
+                for key, value in sorted(histo_in.items()):
+                    outfd.write('{},{}\n'.format(key, value))
 
         print('Top 10 exporters:')
         top_exporters = list(sorted(libobjs, key=lambda x: len(list(x.exported_addrs)), reverse=True))
         for library in top_exporters[:10]:
             print('{}: {}'.format(library.fullname, len(list(library.exported_addrs))))
 
-        with open('{}_number_of_exports.csv'.format(self.args.store), 'w') as outfd:
-            for library in top_exporters:
-                outfd.write('{},{}\n'.format(library.fullname, len(list(library.exported_addrs))))
+        if self.args.write_csvs:
+            with open('{}_number_of_exports.csv'.format(self.args.store), 'w') as outfd:
+                for library in top_exporters:
+                    outfd.write('{},{}\n'.format(library.fullname, len(list(library.exported_addrs))))
 
-        with open('{}_exports_histo.csv'.format(self.args.store), 'w') as outfd:
-            for key, value in sorted(histo_out.items()):
-                outfd.write('{},{}\n'.format(key, value))
+            with open('{}_exports_histo.csv'.format(self.args.store), 'w') as outfd:
+                for key, value in sorted(histo_out.items()):
+                    outfd.write('{},{}\n'.format(key, value))
 
     def print_store_keys(self):
         for key, _ in sorted(self.store.items()):
