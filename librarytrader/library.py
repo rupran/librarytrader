@@ -980,7 +980,16 @@ class Library:
         # NOPs, extend the previous function to include the NOPs as well and
         # hence close the 'useless' gap between consecutive functions.
         if not FIXUP_FUNCTION_RANGES:
+            known_alignment = 1
+            alignments = [2, 4, 8, 16, 32]
+            for alignment in alignments:
+                if any(addr % alignment != 0 for addr in self.ranges.keys()):
+                    break
+                known_alignment = alignment
+            logging.info('%s: detected minimum function alignment of 0x%x',
+                         self.fullname, known_alignment)
             return
+
         ranges_list = sorted(self.ranges.items())
         for idx, (start, size) in enumerate(ranges_list[:-1]):
             cur_end = start + size
