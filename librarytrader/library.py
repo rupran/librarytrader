@@ -1087,7 +1087,7 @@ class Library:
     def find_local_functions(self, requested_pattern):
         retval = set()
         for addr, names in self.local_functions.items():
-            if any(re.fullmatch(requested_pattern, name) for name in names):
+            if any(re.fullmatch(r'(.*\.c_|)' + requested_pattern, name) for name in names):
                 retval.add(addr)
 
         return retval
