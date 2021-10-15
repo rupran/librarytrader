@@ -865,13 +865,18 @@ class LibraryStore(BaseStore):
 
     def generate_uprobe_strings(self, output_name, all_entries=True):
         logging.info('Generating uprobe strings to %s...', output_name)
+        mount_prefix = os.environ.get('MOUNT_PREFIX', '').rstrip('/')
         with open(output_name, 'w') as outfd:
             counter = 0
             for lib in self.get_entry_points(all_entries):
                 for address in lib.ranges.keys():
                     event_name = 'trace_probe_{}'.format(counter)
                     counter += 1
+                    library_path = lib.fullname
+                    if library_path.startswith(mount_prefix):
+                        library_path = library_path[len(mount_prefix):]
+
                     outfd.write('u:{} {}:{}\n'.format(event_name,
-                                                      lib.fullname,
+                                                      library_path,
                                                       hex(address)))
         logging.info('... done!')

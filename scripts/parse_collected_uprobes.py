@@ -29,6 +29,8 @@ sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from librarytrader.librarystore import LibraryStore
 
+MOUNT_PREFIX = os.environ.get('MOUNT_PREFIX', '')
+
 def normalize(path):
     return re.sub(r'\W', '_', path[1:])
 
@@ -42,6 +44,7 @@ with open(uprobe_file_path, 'r') as infd:
         line = line.strip()
         name, path_and_offset = line.split(' ', 1)
         path, offset = path_and_offset.split(':')
+        path = os.path.abspath(MOUNT_PREFIX + path)
         num_to_path[name[2:]] = (path, int(offset, 16))
 
 store = LibraryStore()
