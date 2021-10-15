@@ -46,6 +46,7 @@ class LibraryStore(BaseStore):
                 link_path = path
                 path = os.path.realpath(path)
 
+            path = os.path.abspath(path)
             if path in self:
                 return (self.get_from_path(path), link_path)
 
