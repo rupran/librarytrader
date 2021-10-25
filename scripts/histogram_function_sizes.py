@@ -27,7 +27,7 @@ df = pandas.DataFrame(all_ranges, columns=["Function Size"])
 if len(sys.argv) >= 4:
     max_x = int(sys.argv[3])
 else:
-    max_x = ax.get_xlim()[1]
+    max_x = df["Function Size"].max()
 
 print(' * Statistics:')
 print('  * Number of ranges: {}'.format(len(all_ranges)))
