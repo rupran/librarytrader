@@ -141,6 +141,7 @@ class Library:
         self.init_functions = []
         self._init_range = None
         self.fini_functions = []
+        self._fini_range = None
 
         self.ranges = {}
         self.external_calls = collections.defaultdict(set)
@@ -500,6 +501,7 @@ class Library:
 
         if fini_array is not None and fini_arraysz != 0:
             logging.debug('DT_FINI_ARRAY at %x, length %d', fini_array, fini_arraysz)
+            self._fini_range = (fini_array, fini_array + fini_arraysz)
             _process_function_array(fini_array, fini_arraysz, self.fini_functions)
 
     def _get_addend(self, reloc):
@@ -790,6 +792,27 @@ class Library:
                         symbol_offset = symbol_addr - self.load_offset
                         self.init_functions.append(symbol_offset)
                         logging.debug('%s: RELATIVE relocation into init: %x -> %x/%x',
+                                      self.fullname, real_offset, symbol_addr, symbol_offset)
+
+        # Same for FINI_ARRAY
+        if self._fini_range:
+            for reloc in dynrel.iter_relocations():
+                if reloc['r_info_type'] == ptr_reloc_type:
+                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
+                    if real_offset in range(*self._fini_range):
+                        symbol_idx = reloc['r_info_sym']
+                        symbol = dynsym.get_symbol(symbol_idx)
+                        self.fini_functions.append(self._get_symbol_offset(symbol))
+                        logging.debug('%s: relocation into fini: %x -> %s',
+                                      self.fullname, real_offset,
+                                      self._get_versioned_name(symbol, symbol_idx))
+                elif reloc['r_info_type'] == fptr_reloc_type:
+                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
+                    if real_offset in range(*self._fini_range):
+                        symbol_addr = self._get_addend(reloc)
+                        symbol_offset = symbol_addr - self.load_offset
+                        self.fini_functions.append(symbol_offset)
+                        logging.debug('%s: RELATIVE relocation into fini: %x -> %x/%x',
                                       self.fullname, real_offset, symbol_addr, symbol_offset)
 
     def parse_versions(self):
