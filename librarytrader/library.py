@@ -769,9 +769,9 @@ class Library:
                             location in self.local_objs:
                         self.object_to_objects[start].add(location)
 
-        # Check if any ptr_reloc_type relocations are written into the
-        # INIT_ARRAY address range and note their targets in the list of init
-        # functions.
+        # Check if any ptr_reloc_type or fptr_reloc_type relocations are written
+        # into the INIT_ARRAY address range and note their targets in the list
+        # of init functions.
         if self._init_range:
             for reloc in dynrel.iter_relocations():
                 if reloc['r_info_type'] == ptr_reloc_type:
@@ -783,6 +783,14 @@ class Library:
                         logging.debug('%s: relocation into init: %x -> %s',
                                       self.fullname, real_offset,
                                       self._get_versioned_name(symbol, symbol_idx))
+                elif reloc['r_info_type'] == fptr_reloc_type:
+                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
+                    if real_offset in range(*self._init_range):
+                        symbol_addr = self._get_addend(reloc)
+                        symbol_offset = symbol_addr - self.load_offset
+                        self.init_functions.append(symbol_offset)
+                        logging.debug('%s: RELATIVE relocation into init: %x -> %x/%x',
+                                      self.fullname, real_offset, symbol_addr, symbol_offset)
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
