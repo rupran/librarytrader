@@ -28,6 +28,7 @@ from elftools.common.exceptions import ELFError
 from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
+from elftools.elf.sections import Section
 from elftools.common.utils import struct_parse
 from elftools.construct import Padding, SLInt32, Struct
 from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
@@ -546,7 +547,7 @@ class Library:
                 # entry in the .plt is in fact 16 bytes long, so round up to
                 # sh_addralign (see https://reviews.llvm.org/D9560).
                 increment = _round_up_to_alignment(plt['sh_entsize'], plt['sh_addralign'])
-                if plt.name == '.plt.sec':
+                if isinstance(plt, Section) and plt.name == '.plt.sec':
                     # .plt.sec does not contain a special first entry so the
                     # first entry (after incrementing) starts at offset 0.
                     plt_offset = -increment
