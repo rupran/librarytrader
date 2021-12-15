@@ -1013,6 +1013,36 @@ class Library:
         cs_obj.detail = True
         return cs_obj
 
+    def _check_init_functions(self):
+        # Check if the pointers in the INIT and FINI arrays have corresponding
+        # entries in the ranges dictionary. If they don't, create artificial
+        # local function entries which have a size ranging up to the next
+        # (defined or artifical) symbol in the file.
+        ptrs = set(self.ranges)
+        ptrs.update(self.init_functions, self.fini_functions)
+        ptrs = sorted(ptrs)
+
+        created_functions_ct = 0
+        for extra_list in [self.init_functions, self.fini_functions]:
+            for cur_start in extra_list:
+                if cur_start not in self.ranges:
+                    logging.warning('%s / %x not in ranges', self.fullname, cur_start)
+                    cur_idx = ptrs.index(cur_start)
+                    if cur_idx + 1 == len(ptrs):
+                        logging.warning('last cur_start in range, continuing...')
+                        continue
+                    next_start = ptrs[cur_idx + 1]
+                    calculated_size = next_start - cur_start
+                    if calculated_size < 0:
+                        logging.warning('calculated size < 0, continuing...')
+                    name = '__librarytrader_function_{}'.format(created_functions_ct)
+                    created_functions_ct += 1
+                    logging.debug('%s: created custom local function (%s, start %x, size %d)',
+                                  self.fullname, name, cur_start, calculated_size)
+                    self.ranges[cur_start] = calculated_size
+                    self.local_functions[cur_start].append(name)
+                    self.local_users[cur_start] = set()
+
     def _postprocess_ranges(self):
         # Check the gaps between recognized functions. If they only consist of
         # NOPs, extend the previous function to include the NOPs as well and
@@ -1070,6 +1100,7 @@ class Library:
         if self.entrypoint and self.entrypoint not in self.ranges:
             self.ranges[self.entrypoint] = 0
         if has_symtab:
+            self._check_init_functions()
             self._postprocess_ranges()
         if release:
             self._release_elffile()
