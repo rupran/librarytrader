@@ -1056,6 +1056,9 @@ class Library:
                 known_alignment = alignment
             logging.info('%s: detected minimum function alignment of 0x%x',
                          self.fullname, known_alignment)
+            if known_alignment > 1:
+                logging.warning('%s: alignment 0x%x > 1 but FIXUP_FUNCTION_RANGES not set!',
+                                self.fullname, known_alignment)
             return
 
         ranges_list = sorted(self.ranges.items())
