@@ -782,7 +782,9 @@ class Library:
                     if real_offset in range(*self._init_range):
                         symbol_idx = reloc['r_info_sym']
                         symbol = dynsym.get_symbol(symbol_idx)
-                        self.init_functions.append(self._get_symbol_offset(symbol))
+                        symbol_offset = self._get_symbol_offset(symbol)
+                        if symbol_offset not in self.init_functions:
+                            self.init_functions.append(symbol_offset)
                         logging.debug('%s: relocation into init: %x -> %s',
                                       self.fullname, real_offset,
                                       self._get_versioned_name(symbol, symbol_idx))
@@ -791,7 +793,8 @@ class Library:
                     if real_offset in range(*self._init_range):
                         symbol_addr = self._get_addend(reloc)
                         symbol_offset = symbol_addr - self.load_offset
-                        self.init_functions.append(symbol_offset)
+                        if symbol_offset not in self.init_functions:
+                            self.init_functions.append(symbol_offset)
                         logging.debug('%s: RELATIVE relocation into init: %x -> %x/%x',
                                       self.fullname, real_offset, symbol_addr, symbol_offset)
 
@@ -803,7 +806,9 @@ class Library:
                     if real_offset in range(*self._fini_range):
                         symbol_idx = reloc['r_info_sym']
                         symbol = dynsym.get_symbol(symbol_idx)
-                        self.fini_functions.append(self._get_symbol_offset(symbol))
+                        symbol_offset = self._get_symbol_offset(symbol)
+                        if symbol_offset not in self._fini_functions:
+                            self.fini_functions.append(symbol_offset)
                         logging.debug('%s: relocation into fini: %x -> %s',
                                       self.fullname, real_offset,
                                       self._get_versioned_name(symbol, symbol_idx))
@@ -812,7 +817,8 @@ class Library:
                     if real_offset in range(*self._fini_range):
                         symbol_addr = self._get_addend(reloc)
                         symbol_offset = symbol_addr - self.load_offset
-                        self.fini_functions.append(symbol_offset)
+                        if symbol_offset not in self.fini_functions:
+                            self.fini_functions.append(symbol_offset)
                         logging.debug('%s: RELATIVE relocation into fini: %x -> %x/%x',
                                       self.fullname, real_offset, symbol_addr, symbol_offset)
 
