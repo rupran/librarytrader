@@ -1026,15 +1026,15 @@ class Library:
         for extra_list in [self.init_functions, self.fini_functions]:
             for cur_start in extra_list:
                 if cur_start not in self.ranges:
-                    logging.warning('%s / %x not in ranges', self.fullname, cur_start)
+                    logging.warning('%s: %x not in ranges', self.fullname,
+                                    cur_start)
                     cur_idx = ptrs.index(cur_start)
                     if cur_idx + 1 == len(ptrs):
-                        logging.warning('last cur_start in range, continuing...')
                         continue
                     next_start = ptrs[cur_idx + 1]
                     calculated_size = next_start - cur_start
                     if calculated_size < 0:
-                        logging.warning('calculated size < 0, continuing...')
+                        continue
                     name = '__librarytrader_function_{}'.format(created_functions_ct)
                     created_functions_ct += 1
                     logging.debug('%s: created custom local function (%s, start %x, size %d)',
@@ -1042,6 +1042,20 @@ class Library:
                     self.ranges[cur_start] = calculated_size
                     self.local_functions[cur_start].append(name)
                     self.local_users[cur_start] = set()
+                elif self.ranges[cur_start] == 0:
+                    logging.warning('%s: 0-sized entry in init/fini: %x',
+                                    self.fullname, cur_start)
+                    cur_idx = ptrs.index(cur_start)
+                    if cur_idx + 1 == len(ptrs):
+                        continue
+                    next_start = ptrs[cur_idx + 1]
+                    calculated_size = next_start - cur_start
+                    if calculated_size < 0:
+                        continue
+                    logging.debug('%s: fixing range for address %x: %d -> %d',
+                                  self.fullname, cur_start, self.ranges[cur_start],
+                                  calculated_size)
+                    self.ranges[cur_start] = calculated_size
 
     def _postprocess_ranges(self):
         # Check the gaps between recognized functions. If they only consist of
