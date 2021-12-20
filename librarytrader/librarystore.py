@@ -869,15 +869,15 @@ class LibraryStore(BaseStore):
         mount_prefix = os.environ.get('MOUNT_PREFIX', '').rstrip('/')
         with open(output_name, 'w') as outfd:
             counter = 0
-            for lib in self.get_entry_points(all_entries):
-                for address in lib.ranges.keys():
+            for lib in sorted(self.get_entry_points(all_entries), key=lambda x: x.fullname):
+                for address in sorted(lib.ranges.keys()):
                     event_name = 'trace_probe_{}'.format(counter)
                     counter += 1
                     library_path = lib.fullname
                     if library_path.startswith(mount_prefix):
                         library_path = library_path[len(mount_prefix):]
 
-                    outfd.write('u:{} {}:{}\n'.format(event_name,
+                    outfd.write('p:{} {}:{}\n'.format(event_name,
                                                       library_path,
                                                       hex(address)))
         logging.info('... done!')
