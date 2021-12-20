@@ -1196,7 +1196,7 @@ class Library:
     def find_exports_by_pattern(self, requested_pattern):
         retval = set()
         for name, addr in self.exported_names.items():
-            if re.fullmatch(requested_pattern, name):
+            if re.fullmatch(re.escape(requested_pattern), name):
                 retval.add(addr)
         return retval
 
