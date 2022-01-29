@@ -317,7 +317,8 @@ class LibraryStore(BaseStore):
                                   name, library.fullname, function)
                     continue
 
-                for dependent_function in target_lib.object_to_functions[callee_addr]:
+                for dependent_function in self._resolve_object_to_functions(target_lib,
+                                                                            callee_addr):
                     logging.debug('transitive call to %s:%x through object %s from %s',
                                   target_lib.fullname, dependent_function, name,
                                   library.fullname)
