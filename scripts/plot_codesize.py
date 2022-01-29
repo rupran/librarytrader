@@ -42,6 +42,7 @@ ax = seaborn.barplot(x='filename',
                      hue='variable',
                      data=data)
 ax.ticklabel_format(style='plain', axis='y')
+ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
 
 change_width(ax, .30)
 
@@ -58,8 +59,8 @@ plt.legend(handles,
 ax.set_xlabel('Library filename')
 ax.set_ylabel('Number of code bytes in file')
 ax.set_ylim((0, 1100000))
-ax.bar_label(handles[0], padding=10, fmt='%d')
-ax.bar_label(handles[1], padding=10, fmt='%d')
+ax.bar_label(handles[0], padding=10, fmt='%d', rotation='vertical')
+ax.bar_label(handles[1], padding=10, fmt='%d', rotation='vertical')
 
 # Write the plot out
 plt.tight_layout()

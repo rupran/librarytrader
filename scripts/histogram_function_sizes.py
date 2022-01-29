@@ -2,6 +2,7 @@
 
 import collections
 import matplotlib.pyplot as plt
+import numpy
 import pandas
 import statistics
 import sys
@@ -33,7 +34,9 @@ print(' * Statistics:')
 print('  * Number of ranges: {}'.format(len(all_ranges)))
 print('  * .. Mean:   {}'.format(df["Function Size"].mean()))
 print('  * .. Median: {}'.format(df["Function Size"].median()))
+print('  * .. 95th quantile: {}'.format(df["Function Size"].quantile(.95)))
 print('  * .. Max:    {}'.format(df["Function Size"].max()))
+print('  * .. Total number of bytes: {}'.format(df["Function Size"].sum()))
 
 print(' * Plotting...')
 xlim = (-10, max_x)

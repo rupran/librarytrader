@@ -73,7 +73,7 @@ for ax in (ax3,):
     handles, labels = ax.get_legend_handles_labels()
 # Add the labels to both handles
 #    ax.set_xlabel('Number of code bytes in file')
-    ax.set_xlabel('Processing time')
+    ax.set_xlabel('Processing time in seconds')
     ax.set_ylabel('Library filename')
 #    ax.bar_label(handles[0], padding=20, fmt='%.2f')
 #    ax.bar_label(handles[1], padding=10, fmt='%.2f')
