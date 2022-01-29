@@ -237,14 +237,23 @@ class LibraryStore(BaseStore):
             worked_on.add(cur_obj)
         return result
 
-    def get_transitive_calls(self, library, function, working_on=None):
+    def get_transitive_calls(self, library, function, working_on=None,
+                             target_depth=None, cur_depth=0):
+
+        if target_depth and cur_depth == target_depth:
+            return set()
+
         if working_on is None:
             working_on = set()
 
         libname = library.fullname
         if libname not in self._callee_cache:
             self._callee_cache[libname] = {}
-        if function in self._callee_cache[libname]:
+        if target_depth is None and function in self._callee_cache[libname]:
+            # Don't access the cache if we're collecting depth-limited call
+            # graphs. Otherwise, successive calls with increasing depths would
+            # return empty sets for functions at the boundary of the previous
+            # depth and lead to too small results.
             return self._callee_cache[libname][function]
 
         # No cache hit, calculate it
@@ -260,7 +269,8 @@ class LibraryStore(BaseStore):
                                   callee, library.fullname)
                     if callee in working_on:
                         continue
-                    subcalls = self.get_transitive_calls(library, callee, working_on)
+                    subcalls = self.get_transitive_calls(library, callee, working_on,
+                                                         target_depth, cur_depth + 1)
                     local_cache.update(subcalls)
                 working_on.remove(function)
 
@@ -293,7 +303,8 @@ class LibraryStore(BaseStore):
                                       callee, intermediate_object, library.fullname)
                         if callee in working_on:
                             continue
-                        subcalls = self.get_transitive_calls(library, callee, working_on)
+                        subcalls = self.get_transitive_calls(library, callee, working_on,
+                                                             target_depth, cur_depth + 1)
                         local_cache.update(subcalls)
 
                 working_on.remove(function)
