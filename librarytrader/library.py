@@ -1200,38 +1200,44 @@ class Library:
                 retval.add(addr)
         return retval
 
-    def _get_names_for_addrs(self, addrs, name_dict):
-        return set(name for addr in addrs for name in name_dict[addr])
+    def _get_names_for_addrs(self, addrs, name_dict, one_name_per_function):
+        retval = set()
+        for addr in addrs:
+            for name in sorted(name_dict[addr]):
+                retval.add(name)
+                if one_name_per_function:
+                    break
+        return retval
 
     def get_used_exported_functions(self):
         return set(addr for addr, users in self.export_users.items() if users)
 
-    def get_used_exported_function_names(self):
+    def get_used_exported_function_names(self, one_name_per_function=False):
         return self._get_names_for_addrs(self.get_used_exported_functions(),
-                                         self.exported_addrs)
+                                         self.exported_addrs, one_name_per_function)
 
     def get_unused_exported_functions(self):
         return set(addr for addr in self.exported_addrs \
                    if not self.export_users.get(addr, set()))
 
-    def get_unused_exported_function_names(self):
+    def get_unused_exported_function_names(self, one_name_per_function=False):
         return self._get_names_for_addrs(self.get_unused_exported_functions(),
-                                         self.exported_addrs)
+                                         self.exported_addrs, one_name_per_function)
 
     def get_used_local_functions(self):
         return set(addr for addr, users in self.local_users.items() if users)
 
-    def get_used_local_function_names(self):
+    def get_used_local_function_names(self, one_name_per_function=False):
         return self._get_names_for_addrs(self.get_used_local_functions(),
-                                         self.local_functions)
+                                         self.local_functions, one_name_per_function)
 
     def get_unused_local_functions(self):
         return set(addr for addr in self.local_functions \
                    if not self.local_users.get(addr, set()))
 
-    def get_unused_local_function_names(self):
+    def get_unused_local_function_names(self, one_name_per_function=False):
         return self._get_names_for_addrs(self.get_unused_local_functions(),
-                                         self.local_functions)
+                                         self.local_functions, one_name_per_function)
 
     def get_function_ranges(self):
         return self.ranges
