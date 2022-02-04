@@ -11,11 +11,17 @@ if len(sys.argv) > 1:
 else:
     outfile = '/tmp/collected_uprobes'
 
+max_unchanged_rounds = -1
+if len(sys.argv) > 2:
+    max_unchanged_rounds = int(sys.argv[2])
+
+
 outfd = open(outfile, 'w')
 
 folders = set(f.name for f in os.scandir(MOUNTPOINT + 'events/uprobes') if f.is_dir())
 iteration = 1
 changed = True
+unchanged_rounds = 0
 
 while folders:
     if changed:
@@ -41,7 +47,11 @@ while folders:
     folders = folders.difference(removed)
     outfd.flush()
     if len(removed) == 0:
+        unchanged_rounds += 1
+        if max_unchanged_rounds > 0 and unchanged_rounds == max_unchanged_rounds:
+            break
         time.sleep(10)
     else:
+        unchanged_rounds = 0
         changed = True
     iteration += 1

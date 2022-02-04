@@ -25,11 +25,12 @@ if len(sys.argv) > 1:
             disable_event(line.split(' ')[0][2:])
 else:
     i = 0
-    for folder in os.scandir(MOUNTPOINT + '/events/uprobes'):
-        i += 1
-        if folder.is_dir():
-            disable_event(folder.name)
-            if i % 1000 == 0:
-                print('disabled {} events'.format(i))
+    if os.path.isdir(MOUNTPOINT + '/events/uprobes'):
+        for folder in os.scandir(MOUNTPOINT + '/events/uprobes'):
+            i += 1
+            if folder.is_dir():
+                disable_event(folder.name)
+                if i % 1000 == 0:
+                    print('disabled {} events'.format(i))
 
 write_to_trace_file('uprobe_events', os.O_WRONLY | os.O_TRUNC, '')
