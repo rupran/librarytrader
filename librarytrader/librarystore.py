@@ -795,6 +795,7 @@ class LibraryStore(BaseStore):
                 lib_dict["version_descriptions"] = content.version_descriptions
                 lib_dict["parse_time"] = content.parse_time
                 lib_dict["total_disas_time"] = content.total_disas_time
+                lib_dict["external_debug_file"] = content.external_debug_file
 
             output[path] = lib_dict
 
@@ -872,6 +873,7 @@ class LibraryStore(BaseStore):
                     library.version_descriptions = content.get("version_descriptions", {})
                     library.parse_time = float(content.get("parse_time", 0))
                     library.total_disas_time = float(content.get("total_disas_time", 0))
+                    library.external_debug_file = content.get("external_debug_file", None)
                     self._add_library(path, library)
 
         logging.debug('... done with %s entries', len(self))

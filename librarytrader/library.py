@@ -152,6 +152,8 @@ class Library:
         self.parse_time = 0
         self.total_disas_time = 0
 
+        self.external_debug_file = None
+
         if parse:
             self.parse_functions()
 
@@ -912,7 +914,7 @@ class Library:
                     if fd > 0:
                         external_elf = ELFFile(os.fdopen(fd, 'rb'))
                         symtab = external_elf.get_section_by_name('.symtab')
-                        external_path = path
+                        external_path = path.decode('utf-8')
             except (ELFError, OSError, FileNotFoundError) as e:
                 logging.debug('debuginfod query failed: %s', e)
 
@@ -920,7 +922,8 @@ class Library:
             return False
         elif external_path:
             logging.debug('Found external symtab for %s at %s', self.fullname,
-                          external_path)
+                          os.path.abspath(external_path))
+            self.external_debug_file = os.path.abspath(external_path)
 
         sorted_ranges = sorted(self.ranges.items())
         for _, symbol in self._get_function_symbols(symtab, prefix_local=True):
