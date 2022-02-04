@@ -31,8 +31,8 @@ flags for all the different aspects described below.
 ```
 usage: running_analysis.py [-h] [-v] [-l LOAD] [-s STORE] [-r] [-i] [-t] [-a]
                            [-e ENTRY_LIST] [-u USED_FUNCTIONS] [--single]
-                           [--uprobe-strings]
-                           [paths [paths ...]]
+                           [--uprobe-strings] [--loaderlike] [--write-csvs]
+                           [--leave-undef-unused] [paths ...]
 
 Evaluate imports and exports of .so libraries and ELF executables.
 
@@ -61,6 +61,12 @@ optional arguments:
                         symbols from dlsym
   --single              Do not recursively resolve libraries
   --uprobe-strings      Generate uprobe strings into a file
+  --loaderlike          Resolve functions only from executables while respecting
+                        weak symbols
+  --write-csvs          write .csv files with statistics
+  --leave-undef-unused  Keep targets for SHN_UNDEF functions unused during
+                        function resolution. This allows us to later remove
+                        unused SHN_UNDEF entries and their counterparts.
 ```
 
 The resolution of imports on a live system is encapsulated in the `LibraryStore`
