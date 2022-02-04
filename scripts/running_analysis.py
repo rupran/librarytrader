@@ -93,6 +93,11 @@ class Runner():
                             'while respecting weak symbols')
         parser.add_argument('--write-csvs', action='store_true',
                             help='write .csv files with statistics')
+        parser.add_argument('--leave-undef-unused', action='store_true',
+                            help='Keep targets for SHN_UNDEF functions unused '\
+                            'during function resolution. This allows us to ' \
+                            'later remove unused SHN_UNDEF entries and their '\
+                            'counterparts.')
         self.args = parser.parse_args()
 
         loglevel = logging.WARNING
@@ -149,7 +154,7 @@ class Runner():
             self._mark_extra_functions_as_used()
 
         if self.args.resolve_functions:
-            self.get_all_resolved_functions()
+            self.get_all_resolved_functions(self.args.leave_undef_unused)
 
         if self.args.transitive_users and not self.args.loaderlike:
             self._propagate_users_through_calls()
@@ -174,12 +179,16 @@ class Runner():
     def _process_interface_calls(self):
         resolve_calls(self.store)
 
-    def get_all_resolved_functions(self):
+    def get_all_resolved_functions(self, leave_undef_unused=False):
         if self.all_resolved_functions is None:
+            # If the targets of SHN_UNDEF symbols should be marked as used
+            # during function resolution, we force them to be added
+            force_add = not leave_undef_unused
             if self.args.loaderlike:
-                self.store.resolve_all_functions_from_binaries()
+                self.store.resolve_all_functions_from_binaries(force_add_to_exports=force_add)
             else:
-                self.store.resolve_all_functions(self.args.all_entries)
+                self.store.resolve_all_functions(self.args.all_entries,
+                                                 force_add_to_exports=force_add)
             self.all_resolved_functions = self._create_export_user_mapping()
         return self.all_resolved_functions
 
@@ -211,7 +220,7 @@ class Runner():
                     library.add_export_user(addr, 'EXTERNAL')
 
     def _propagate_users_through_calls(self):
-        self.get_all_resolved_functions()
+        self.get_all_resolved_functions(self.args.leave_undef_unused)
         self.store.propagate_call_usage(self.args.all_entries)
         self.all_resolved_functions = self._create_export_user_mapping()
         return self.all_resolved_functions

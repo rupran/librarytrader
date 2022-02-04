@@ -27,6 +27,8 @@ from librarytrader.common.datatypes import BaseStore
 from librarytrader.library import Library
 from librarytrader.ldresolve import LDResolve
 
+TAILOR_BINARIES = os.environ.get('TAILOR_BINARIES')
+
 class LibraryStore(BaseStore):
 
     def __init__(self, ldconfig_file=None):
@@ -190,8 +192,15 @@ class LibraryStore(BaseStore):
         return retval
 
     def get_executable_objects(self):
-        return list(library for library in self.get_library_objects()
-                    if os.access(library.fullname, os.X_OK))
+        exclude_set = set(['libc\.so\.6', 'libpthread\.so\.0',
+                        'libc-2\.[0-9]+\.so', 'libpthread-2\.[0-9]+\.so'])
+
+        executables = [library for library in self.get_library_objects()
+                       if os.access(library.fullname, os.X_OK) and
+                       not any(re.match(pattern,
+                                        os.path.basename(library.fullname))\
+                               for pattern in exclude_set)]
+        return executables
 
     def get_all_reachable_from_executables(self):
         retval = set()
@@ -474,7 +483,7 @@ class LibraryStore(BaseStore):
                 return True
         return False
 
-    def resolve_functions(self, library):
+    def resolve_functions(self, library, do_add=False):
         if isinstance(library, str):
             name = library
             library = self.get_from_path(library)
@@ -490,7 +499,7 @@ class LibraryStore(BaseStore):
 
         for function in library.imports:
             # Try to find the exact name in all imported libraries...
-            found = self._find_imported_function(function, library)
+            found = self._find_imported_function(function, library, add=do_add)
 
             if not found:
                 # Hack: search function in all libraries in the store
@@ -611,13 +620,22 @@ class LibraryStore(BaseStore):
 
         logging.info('... done!')
 
-    def resolve_all_functions(self, all_entries=False):
+    def resolve_all_functions(self, all_entries=False, force_add_to_exports=True):
         libobjs = self.get_entry_points(all_entries)
 
         # Count references across libraries
         logging.info('Resolving functions between libraries...')
         for lib in libobjs:
-            self.resolve_functions(lib)
+            # If TAILOR_BINARIES is not set, we want to be able to use the
+            # original top-level binary files. in this case, mark the imported
+            # functions as used in the providing library when doing symbol
+            # resolution to keep them from being removed later.
+            add_exports = False
+            if not TAILOR_BINARIES:
+                add_exports = lib in self.get_executable_objects()
+            if force_add_to_exports:
+                add_exports = True
+            self.resolve_functions(lib, do_add=add_exports)
 
         logging.info('... done!')
 
@@ -634,10 +652,17 @@ class LibraryStore(BaseStore):
             user_dict = collections.defaultdict(set)
             user_dict_passed = False
             for lib in lib_worklist:
+                if (not TAILOR_BINARIES) and lib in self.get_executable_objects():
+                    for addr in lib.local_functions:
+                        user_dict[(lib.fullname, addr)].add('BINARY')
+                        lib.add_export_user(addr, 'BINARY')
+                    for addr in lib.exported_addrs:
+                        user_dict[(lib.fullname, addr)].add('BINARY')
+                        lib.add_export_user(addr, 'BINARY')
                 for addr, users in lib.export_users.items():
-                    user_dict[(lib.fullname, addr)] = users.copy()
+                    user_dict[(lib.fullname, addr)].update(users)
                 for addr, users in lib.local_users.items():
-                    user_dict[(lib.fullname, addr)] = users.copy()
+                    user_dict[(lib.fullname, addr)].update(users)
 
         # Starting points are all referenced exports...
         worklist = set()

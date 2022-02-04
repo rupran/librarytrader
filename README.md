@@ -176,6 +176,7 @@ information propagation through setting the environment variables below.
 | `ALL_FUNCTIONS_FROM_OBJECTS`  | If set, a reference to an object containing function pointers will mark all function pointers in the object as used. While this increases static coverage of possibly required functions, it can lead to a very high overapproximation depending on the structure of the target library (i.e., if most functions are referenced from a structure which is initialized but never actually used) |
 | `FIXUP_FUNCTION_RANGES`       | If set, parsing the ELF files will entail an additional postprocessing step which checks if the gaps between known function boundaries consist of NOPs only. In this case, the `ranges` dictionary entry of the preceding function is updated to include the trailing NOPs. |
 | `MOUNT_PREFIX`                | A path prefix that is removed from all paths generated in the uprobes file generated with the `--uprobe-strings` parameter. This way, the uprobes can be directly copied to the target file system. Additionally, `parse_collected_uprobes.py` respects (i.e., re-appends) this prefix when resolving the probes back to paths in the JSON file. |
+| `TAILOR_BINARIES`             | If set, the transitive call propagation will also follow the control flow in functions in executable files (as checked by `os.access(<path>, X_OK) which may lead to eliminated functions in the executable. Otherwise, all local and exported functions in executable files are marked as used by `'BINARY'``.  |
 
 ## Analyzing a collection of object files
 
