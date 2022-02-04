@@ -1198,8 +1198,11 @@ class Library:
 
     def find_exports_by_pattern(self, requested_pattern):
         retval = set()
+        escaped_pattern = re.escape(requested_pattern)
         for name, addr in self.exported_names.items():
-            if re.fullmatch(re.escape(requested_pattern), name):
+            if re.fullmatch(escaped_pattern, name):
+                retval.add(addr)
+            elif re.fullmatch(escaped_pattern, name.split('@@')[0]):
                 retval.add(addr)
         return retval
 

@@ -82,8 +82,7 @@ with open(collectpath, 'r') as collectfd:
                     else:
                         traced_only_binaries += 1
 #                        parsed_mapping[lib.fullname].add('LOCAL_{}'.format(offset))
-                for name in lib.local_functions[offset]:
-                    parsed_mapping[lib.fullname].add('LOCAL_{}'.format(name))
+                parsed_mapping[lib.fullname].add('LOCAL_{}'.format(hex(offset)))
                 print('LOCAL_{}'.format(offset), 'name set: {}'.format(lib.local_functions[offset]))
             else:
                 print('no functions for {}:{}'.format(lib.fullname, hex(offset)))
@@ -100,7 +99,7 @@ with open(collectpath, 'r') as collectfd:
                 traced_only_libraries += 1
             else:
                 traced_only_binaries += 1
-        parsed_mapping[lib.fullname].add(fnames[0])
+        parsed_mapping[lib.fullname].add('GLOBAL_{}'.format(hex(offset)))
 
 n_export = 0
 n_local = 0

@@ -210,8 +210,18 @@ class Runner():
                         logging.debug('_mark_extra_functions: found match for '\
                                       'local function pattern \'%s\' at %s',
                                         function[6:], addrs)
+                elif function.startswith('GLOBAL_'):
+                    if function[7:].isdigit():
+                        addrs.add(int(function[7:]))
+                    elif function[7:].startswith('0x'):
+                        addrs.add(int(function[9:], base=16))
                 else:
-                    addrs.update(library.find_exports_by_pattern(function))
+                    export = library.find_exports_by_pattern(function)
+                    if export:
+                        logging.debug('_mark_extra_functions: found global '\
+                                      'addrs %s for %s', export, function)
+                    addrs.update(export)
+                    addrs.update(library.find_local_functions(function))
                 if not addrs:
                     logging.warning('mark_extra: %s not found in %s', function,
                                     library.fullname)
