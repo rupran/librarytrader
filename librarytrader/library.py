@@ -127,6 +127,11 @@ class Library:
         self.export_object_refs = collections.defaultdict(set)
         self.local_object_refs = collections.defaultdict(set)
         self.import_object_refs = collections.defaultdict(set)
+        # Mapping of caller address -> names of symbols imported via a *dlsym*
+        # function. These can be located later.
+        self.dlsym_refs = collections.defaultdict(set)
+        # Mapping of caller functions -> names of libraries of *dlopen* calls.
+        self.dlopen_refs = collections.defaultdict(set)
 
         # external users of objects: address -> list of referencing library paths
         self.object_users = collections.OrderedDict()

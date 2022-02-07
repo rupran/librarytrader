@@ -344,6 +344,18 @@ class LibraryStore(BaseStore):
                                   library.fullname)
                     local_cache.add((dependent_function, target_lib))
 
+        # Add references to symbols imported via dlsym
+        # TODO: try to find symbols from libraries in dlopen_refs first?
+        if function in library.dlsym_refs:
+            for outgoing_ref in library.dlsym_refs[function]:
+                target_lib, target_addr = self._hard_search_for_symbol(library,
+                                                                       outgoing_ref)
+                if target_lib:
+                    logging.debug('%s: transitive %x -> %s/%x through dlsym',
+                                  library.fullname, function,
+                                  target_lib.fullname, target_addr)
+                    local_cache.add((target_addr, target_lib))
+
         self._callee_cache[libname][function] = local_cache
         return self._callee_cache[libname][function]
 
@@ -483,6 +495,23 @@ class LibraryStore(BaseStore):
                 return True
         return False
 
+    def _hard_search_for_symbol(self, from_library, function):
+        # Hack: search function in all libraries in the store
+        target_lib, target_addr = None, None
+        for other_lib in self.get_library_objects():
+            if function in other_lib.exported_names:
+                target = other_lib.exported_names
+            else:
+                to_search = [x.split('@@')[0] for x in other_lib.exported_names]
+                if function in to_search:
+                    target = {x.split('@@')[0] : val for x, val in other_lib.exported_names.items()}
+                else:
+                    continue
+                target_lib = other_lib
+                target_addr = target[function]
+                break
+        return target_lib, target_addr
+
     def resolve_functions(self, library, do_add=False):
         if isinstance(library, str):
             name = library
@@ -502,22 +531,13 @@ class LibraryStore(BaseStore):
             found = self._find_imported_function(function, library, add=do_add)
 
             if not found:
-                # Hack: search function in all libraries in the store
-                for other_lib in self.get_library_objects():
-                    if function in other_lib.exported_names:
-                        target = other_lib.exported_names
-                    else:
-                        to_search = [x.split('@@')[0] for x in other_lib.exported_names]
-                        if function in to_search:
-                            target = {x.split('@@')[0] : val for x, val in other_lib.exported_names.items()}
-                        else:
-                            continue
-                    target_name = other_lib.fullname
-                    target_addr = target[function]
-                    library.imports[function] = target_name
-                    other_lib.add_export_user(target_addr, library.fullname)
+                target_lib, target_addr = self._hard_search_for_symbol(library,
+                                                                       function)
+                if target_lib:
+                    library.imports[function] = target_lib.fullname
+                    target_lib.add_export_user(target_addr, library.fullname)
                     logging.info('hard search for %s, found at %s:%x', function,
-                                 target_name, target_addr)
+                                 target_lib.fullname, target_addr)
                     found = True
 
             if not found:
@@ -810,6 +830,8 @@ class LibraryStore(BaseStore):
                 dump_dict_with_set_value(lib_dict, content, "object_users")
                 dump_ordered_dict_as_list(lib_dict, content, "reloc_to_local")
                 dump_ordered_dict_as_list(lib_dict, content, "reloc_to_exported")
+                dump_dict_with_set_value(lib_dict, content, "dlsym_refs")
+                dump_dict_with_set_value(lib_dict, content, "dlopen_refs")
                 lib_dict["init_functions"] = content.init_functions
                 lib_dict["fini_functions"] = content.fini_functions
 
@@ -888,6 +910,8 @@ class LibraryStore(BaseStore):
                     load_dict_with_set_values(content, library, "object_users", int)
                     load_ordered_dict_from_list(content, library, "reloc_to_local")
                     load_ordered_dict_from_list(content, library, "reloc_to_exported")
+                    load_dict_with_set_values(content, library, "dlsym_refs", int)
+                    load_dict_with_set_values(content, library, "dlopen_refs", int)
                     library.init_functions = content.get("init_functions", [])
                     library.fini_functions = content.get("fini_functions", [])
 
