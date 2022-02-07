@@ -192,8 +192,8 @@ class LibraryStore(BaseStore):
         return retval
 
     def get_executable_objects(self):
-        exclude_set = set(['libc\.so\.6', 'libpthread\.so\.0',
-                        'libc-2\.[0-9]+\.so', 'libpthread-2\.[0-9]+\.so'])
+        exclude_set = set([r'libc\.so\.6', r'libpthread\.so\.0',
+                           r'libc-2\.[0-9]+\.so', r'libpthread-2\.[0-9]+\.so'])
 
         executables = [library for library in self.get_library_objects()
                        if os.access(library.fullname, os.X_OK) and

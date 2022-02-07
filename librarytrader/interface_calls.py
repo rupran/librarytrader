@@ -18,7 +18,6 @@
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
 from bisect import bisect_right
-from collections import defaultdict
 from distutils.spawn import find_executable
 import logging
 import multiprocessing
@@ -29,7 +28,6 @@ import sys
 import time
 
 import capstone
-from elftools.common.exceptions import ELFError
 from elftools.common.utils import parse_cstring_from_stream
 
 # In order to be able to use librarytrader from git without having installed it,
@@ -138,7 +136,7 @@ def _locate_parameter(library, disas, start_idx, target_register, mem_tag):
     while idx > 0:
         idx -= 1
         earlier_insn = disas[idx]
-        read, written = earlier_insn.regs_access()
+        _, written = earlier_insn.regs_access()
         if target_register not in written:
             continue
         elif earlier_insn.id != capstone.x86_const.X86_INS_LEA:
@@ -146,7 +144,7 @@ def _locate_parameter(library, disas, start_idx, target_register, mem_tag):
         # Here we know it was a <lea ..., %rsi>, and these
         # accesses will mostly be RIP-relative on x86_64 so we only support
         # <lea xxx(%rip), %rsi> for now.
-        to, val = list(earlier_insn.operands)
+        _, val = list(earlier_insn.operands)
         if val.type == mem_tag and val.value.mem.base == capstone.x86.X86_REG_RIP:
             stroff = earlier_insn.address + val.value.mem.disp + earlier_insn.size
             # Does this need library._elffile.address_offsets()?
@@ -178,7 +176,9 @@ def find_calls_from_capstone(library, disas):
         mem_tag = capstone.x86.X86_OP_MEM
     else:
         logging.error('Unsupported machine type: %s', library.elfheader['e_machine'])
-        return (calls_to_exports, calls_to_imports, calls_to_locals)
+        return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
+                imported_object_refs, exported_object_refs, local_object_refs,
+                dlsym_refs, dlopen_refs)
 
     thunk_reg = None
     thunk_val = None

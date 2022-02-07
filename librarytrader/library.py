@@ -814,7 +814,7 @@ class Library:
                         symbol_idx = reloc['r_info_sym']
                         symbol = dynsym.get_symbol(symbol_idx)
                         symbol_offset = self._get_symbol_offset(symbol)
-                        if symbol_offset not in self._fini_functions:
+                        if symbol_offset not in self.fini_functions:
                             self.fini_functions.append(symbol_offset)
                         logging.debug('%s: relocation into fini: %x -> %s',
                                       self.fullname, real_offset,
