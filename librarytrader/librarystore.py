@@ -652,7 +652,7 @@ class LibraryStore(BaseStore):
             # resolution to keep them from being removed later.
             add_exports = False
             if not TAILOR_BINARIES:
-                add_exports = lib in self.get_executable_objects()
+                add_exports = '.so' not in lib.fullname
             if force_add_to_exports:
                 add_exports = True
             self.resolve_functions(lib, do_add=add_exports)
@@ -672,7 +672,7 @@ class LibraryStore(BaseStore):
             user_dict = collections.defaultdict(set)
             user_dict_passed = False
             for lib in lib_worklist:
-                if (not TAILOR_BINARIES) and lib in self.get_executable_objects():
+                if (not TAILOR_BINARIES) and '.so' not in lib.fullname:
                     for addr in lib.local_functions:
                         user_dict[(lib.fullname, addr)].add('BINARY')
                         lib.add_export_user(addr, 'BINARY')
