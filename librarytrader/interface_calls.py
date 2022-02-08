@@ -29,6 +29,7 @@ import time
 
 import capstone
 from elftools.common.utils import parse_cstring_from_stream
+from elftools.elf.elffile import ELFFile
 
 # In order to be able to use librarytrader from git without having installed it,
 # add top level directory to PYTHONPATH
@@ -146,9 +147,9 @@ def _locate_parameter(library, disas, start_idx, target_register, mem_tag):
         # <lea xxx(%rip), %rsi> for now.
         _, val = list(earlier_insn.operands)
         if val.type == mem_tag and val.value.mem.base == capstone.x86.X86_REG_RIP:
-            stroff = earlier_insn.address + val.value.mem.disp + earlier_insn.size
-            # Does this need library._elffile.address_offsets()?
-            # In mariadb's glibc, .rodata is 1:1 mapped...
+            straddr = earlier_insn.address + val.value.mem.disp + earlier_insn.size
+            elffile = ELFFile(library.fd)
+            stroff = next(elffile.address_offsets(straddr))
             strval = parse_cstring_from_stream(library.fd, stroff)
             retval = strval.decode('utf-8')
             break
