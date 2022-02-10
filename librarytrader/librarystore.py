@@ -507,9 +507,9 @@ class LibraryStore(BaseStore):
                     target = {x.split('@@')[0] : val for x, val in other_lib.exported_names.items()}
                 else:
                     continue
-                target_lib = other_lib
-                target_addr = target[function]
-                break
+            target_lib = other_lib
+            target_addr = target[function]
+            break
         return target_lib, target_addr
 
     def resolve_functions(self, library, do_add=False):
