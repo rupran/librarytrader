@@ -104,8 +104,9 @@ class TestLibrary(unittest.TestCase):
 
         store.resolve_libs_single_by_path(os.path.abspath(TEST_LIBC_LNK))
 
-        # libc.so.6 -> libc-2.23.so and libc-2.23.so
-        self.assertEqual(len(store.items()), 2)
+        # libc.so.6 -> libc-2.23.so, libc-2.23.so, /lib64/ld-linux-x86-64.so.2
+        # from libc's .interp section and its target
+        self.assertEqual(len(store.items()), 4)
         self.assertEqual(store.get_from_path(os.path.abspath(TEST_LIBC_LNK)),
                           store[os.path.abspath(TEST_LIBC)])
 
@@ -117,15 +118,17 @@ class TestLibrary(unittest.TestCase):
         # We need one lib, libc.so.6, linking to libc-2.23.so
         self.assertEqual(len(lib.needed_libs), 1)
 
-        self.assertEqual(len(store), 5)
+        self.assertEqual(len(store), 7)
         # Stored items are:
         # mock.so
         # libc.so.6 -> libc-2.23.so
         # libc-2.23.so
         # ld-linux-x86-64.so.2 -> ld-2.23.so
         # ld-2.23.so
+        # /lib64/ld-linux-x86-64.so.2 -> target
+        # target of above symlink
         self.assertEqual(len(list(key for (key, val) in store.items()
-                                  if isinstance(val, str))), 2)
+                                  if isinstance(val, str))), 3)
         # ... two of them are links
 
     def test_1_resolve_libs_recursive_by_path(self):
@@ -137,15 +140,17 @@ class TestLibrary(unittest.TestCase):
         # We need one lib, libc.so.6, linking to libc-2.23.so
         self.assertEqual(len(lib.needed_libs), 1)
 
-        self.assertEqual(len(store), 5)
+        self.assertEqual(len(store), 7)
         # Stored items are:
         # mock.so
         # libc.so.6 -> libc-2.23.so
         # libc-2.23.so
         # ld-linux-x86-64.so.2 -> ld-2.23.so
         # ld-2.23.so
+        # /lib64/ld-linux-x86-64.so.2 -> target
+        # target of above symlink
         self.assertEqual(len(list(key for (key, val) in store.items()
-                                  if isinstance(val, str))), 2)
+                                  if isinstance(val, str))), 3)
         # ... two of them are links
 
     def test_2_resolution_with_rpaths_and_runpaths(self):

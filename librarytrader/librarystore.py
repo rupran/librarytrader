@@ -165,6 +165,12 @@ class LibraryStore(BaseStore):
         self._find_compatible_libs(library, callback, inherited_rpaths,
                                    ld_library_paths)
 
+        if library.interpreter:
+            # If the current file has an interpreter (.interp section), also
+            # process the interpreter (usually ld-linux-<...>.so)
+            self._resolve_libs(None, library.interpreter, callback,
+                               inherited_rpaths, ld_library_paths)
+
     def resolve_libs_single(self, library, path=""):
         self._resolve_libs(library, path)
 
@@ -843,6 +849,7 @@ class LibraryStore(BaseStore):
                 lib_dict["parse_time"] = content.parse_time
                 lib_dict["total_disas_time"] = content.total_disas_time
                 lib_dict["external_debug_file"] = content.external_debug_file
+                lib_dict["interpreter"] = content.interpreter
 
             output[path] = lib_dict
 
@@ -923,6 +930,7 @@ class LibraryStore(BaseStore):
                     library.parse_time = float(content.get("parse_time", 0))
                     library.total_disas_time = float(content.get("total_disas_time", 0))
                     library.external_debug_file = content.get("external_debug_file", None)
+                    library.interpreter = content.get("interpreter", None)
                     self._add_library(path, library)
 
         logging.debug('... done with %s entries', len(self))

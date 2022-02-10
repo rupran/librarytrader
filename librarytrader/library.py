@@ -29,7 +29,7 @@ from elftools.elf.dynamic import DynamicSegment
 from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
 from elftools.elf.sections import Section
-from elftools.common.utils import struct_parse
+from elftools.common.utils import struct_parse, parse_cstring_from_stream
 from elftools.construct import Padding, SLInt32, Struct
 from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
     ENUM_RELOC_TYPE_AARCH64
@@ -56,6 +56,7 @@ class Library:
             raise ValueError("{} is no absolute path".format(filename))
 
         self.fullname = filename
+        self.interpreter = None
 
         if load_elffile:
             self.fd = open(filename, 'rb')
@@ -76,6 +77,11 @@ class Library:
             self.entrypoint = None
             if self.elfheader['e_type'] == 'ET_EXEC':
                 self.entrypoint = self.elfheader['e_entry'] - self.load_offset
+            interp = self._elffile.get_section_by_name('.interp')
+            if interp:
+                self.interpreter = parse_cstring_from_stream(self.fd,
+                                                             interp['sh_offset']).decode('utf-8)')
+
 
         self._version_names = {}
         self._version_indices = {}
