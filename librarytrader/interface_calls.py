@@ -353,16 +353,13 @@ def resolve_calls_in_library(library, start, size, disas_function=disassemble_ca
 
     cs_obj = library.get_capstone_object()
 
-    indir = {}
     disas, resolution_function = disas_function(library, start, size, cs_obj)
     calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls, \
         uses_of_imports, uses_of_exports, uses_of_locals, dlsym_refs, \
         dlopen_refs = resolution_function(library, disas)
 
-    indir[start] = indirect_calls
-
     after = time.time()
-    return (calls_to_exports, calls_to_imports, calls_to_locals, indir,
+    return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
             uses_of_imports, uses_of_exports, uses_of_locals, dlsym_refs,
             dlopen_refs, (after - before))
 
@@ -420,8 +417,8 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
         store[fullname].export_object_refs[start].update(exported_uses)
         store[fullname].local_object_refs[start].update(local_uses)
         if fullname not in indir:
-            indir[fullname] = set()
-        indir[fullname].update(indirect_calls)
+            indir[fullname] = dict()
+        indir[fullname][start] = indirect_calls
         calls += len(internal_calls) + len(external_calls) + len(local_calls)
         store[fullname].dlsym_refs[start].update(dlsym_refs)
         store[fullname].dlopen_refs[start].update(dlopen_refs)
@@ -433,4 +430,5 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
         del lib.sorted_ranges
     logging.info('... done!')
     logging.info('total number of calls: %d', calls)
-    logging.info('indirect calls: %d', sum(len(x) for x in indir.values()))
+    logging.info('indirect calls: %d', sum(len(targets) for lib, subdict in indir.items() \
+                                                            for start, targets in subdict.items()))
