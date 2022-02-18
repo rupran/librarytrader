@@ -29,11 +29,14 @@ df_s = df.sort_values(by='code size before', ascending=False)
 
 # Generate the bar plot (TODO: try subplots)
 ax1 = fig.add_subplot()
+df_s['total'] = df_s['parse time'] + df_s['disas time'] + df_s['shrink time'] + df_s['shrinkelf time']
+max_x = df_s['total'].max()
+max_x = round(max_x * 1.15)
 ax3 = df_s.plot.barh(x='filename',
 #                     y=['code size after', 'code size before'],
                      y=['parse time', 'disas time', 'shrink time', 'shrinkelf time'],
                      figsize=(8,5),
-                     xlim=(0,11.2),
+                     xlim=(0,max_x),
                      alpha=.7,
                      width=.8,
                      ax=ax1,

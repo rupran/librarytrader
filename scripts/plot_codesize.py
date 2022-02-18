@@ -58,7 +58,8 @@ plt.legend(handles,
 
 ax.set_xlabel('Library filename')
 ax.set_ylabel('Number of code bytes in file')
-ax.set_ylim((0, 1100000))
+ymax = df_s['code size before'].max() * 1.25
+ax.set_ylim((0, ymax))
 ax.bar_label(handles[0], padding=10, fmt='%d', rotation='vertical')
 ax.bar_label(handles[1], padding=10, fmt='%d', rotation='vertical')
 
