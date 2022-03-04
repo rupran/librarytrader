@@ -330,18 +330,24 @@ def find_calls_from_capstone(library, disas):
                     mem_through_thunk = None
                 else:
                     continue
-                if addr in library.exported_addrs:
-                    calls_to_exports.add(addr)
-                elif addr in library.local_functions:
-                    calls_to_locals.add(addr)
-                elif addr in library.imports_plt:
-                    calls_to_imports.add(library.imports_plt[addr])
-                elif addr in library.exported_objs:
+                if addr in library.exported_objs:
                     exported_object_refs.add(addr)
                 elif addr in library.imported_objs:
                     imported_object_refs.add(addr)
                 elif addr in library.local_objs:
                     local_object_refs.add(addr)
+                elif addr in library.reloc_to_local:
+                    calls_to_locals.add(library.reloc_to_local[addr])
+                elif addr in library.reloc_to_exported:
+                    calls_to_exports.add(library.reloc_to_exported[addr])
+                elif addr in library.imports_plt:
+                    calls_to_imports.add(library.imports_plt[addr])
+                elif addr in library.exports_plt:
+                    calls_to_exports.add(library.exports_plt[addr])
+                elif addr in library.exported_addrs:
+                    calls_to_exports.add(addr)
+                elif addr in library.local_functions:
+                    calls_to_locals.add(addr)
 
     return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
             imported_object_refs, exported_object_refs, local_object_refs,
