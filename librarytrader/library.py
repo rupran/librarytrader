@@ -773,17 +773,23 @@ class Library:
                 if ins_point != 0:
                     left_offset = sorted_obj_ranges[ins_point-1]
                     start, size = (left_offset, self.object_ranges[left_offset])
-                    if got_offset not in range(start, start + size):
+                    if got_offset in range(start, start + size):
+                        if location in self.exported_addrs:
+                            self.object_to_functions[start].add(location)
+                            self.reloc_to_exported[got_offset] = location
+                        elif location in self.local_functions:
+                            self.object_to_functions[start].add(location)
+                            self.reloc_to_local[got_offset] = location
+                        elif location in self.exported_objs or \
+                                location in self.local_objs:
+                            self.object_to_objects[start].add(location)
                         continue
-                    if location in self.exported_addrs:
-                        self.object_to_functions[start].add(location)
-                        self.reloc_to_exported[got_offset] = location
-                    elif location in self.local_functions:
-                        self.object_to_functions[start].add(location)
-                        self.reloc_to_local[got_offset] = location
-                    elif location in self.exported_objs or \
-                            location in self.local_objs:
-                        self.object_to_objects[start].add(location)
+                # If the relocation didn't point into a known object, check if
+                # it directly references a local or exported function
+                if location in self.local_functions:
+                    self.reloc_to_local[got_offset] = location
+                elif location in self.exported_addrs:
+                    self.reloc_to_exported[got_offset] = location
 
         # Check if any ptr_reloc_type or fptr_reloc_type relocations are written
         # into the INIT_ARRAY address range and note their targets in the list
