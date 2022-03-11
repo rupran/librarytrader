@@ -1008,6 +1008,14 @@ class Library:
                         self.exported_obj_names[name] = addr
                         self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), size)
                 elif symbol_bind == 'STB_LOCAL':
+                    if symbol.name.startswith('_ZTV'):
+                        vtable_fn_offset = 8 if self.is_i386() else 16
+                        if vtable_fn_offset < symbol['st_size']:
+                            logging.debug('%s:%x is a vtable, adding additional'\
+                                          ' pointer with offset %d',
+                                          self.fullname, addr, vtable_fn_offset)
+                            vtable_start = addr + vtable_fn_offset
+                            self.object_to_objects[vtable_start].add(addr)
                     self.local_objs[addr].append(symbol.name)
                     # Names are not unique for local objects!
                     self.object_ranges[addr] = max(self.object_ranges.get(addr, 0), symbol['st_size'])
