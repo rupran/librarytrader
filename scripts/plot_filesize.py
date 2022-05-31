@@ -39,7 +39,7 @@ df['filename'] = df['filename'].apply(lambda x: os.path.basename(x))
 df_s = df.sort_values(by='code size before', ascending=False)
 
 # seaborn:
-data = df_s[['filename', 'code size before', 'code size after']].melt('filename')
+data = df_s[['filename', 'filesize before', 'filesize after']].melt('filename')
 ax = seaborn.barplot(x='filename',
                      y='value',
                      hue='variable',
@@ -54,19 +54,19 @@ handles, labels = ax.get_legend_handles_labels()
 #order = [1,0]
 #plt.legend([handles[idx] for idx in order],
 plt.legend(handles,
-        ['Bytes of functions before removal', 'Bytes of functions after removal'],
+        ['Size of original library file', 'Size of tailored library file'],
         loc='upper right',
 #        fontsize='large',
         bbox_to_anchor=(.95,.9))
 
 ax.set_xlabel('Library filename')
-ax.set_ylabel('Number of code bytes in file')
-ymax = df_s['code size before'].max() * 1.25
+ax.set_ylabel('File size in bytes')
+ymax = df_s['filesize before'].max() * 1.25
 ax.set_ylim((0, ymax))
 ax.bar_label(handles[0], padding=10, fmt='%d', rotation='vertical')
 ax.bar_label(handles[1], padding=10, fmt='%d', rotation='vertical')
-ax.get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:,}'.format(int(x)).replace(",", u"\N{thin space}")))
 
+ax.get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(lambda x, p: '{:,}'.format(int(x)).replace(",", u"\N{thin space}")))
 # Write the plot out
 plt.tight_layout()
 plt.savefig(outfile)
