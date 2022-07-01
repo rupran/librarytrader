@@ -348,6 +348,30 @@ def find_calls_from_capstone(library, disas):
                     calls_to_exports.add(addr)
                 elif addr in library.local_functions:
                     calls_to_locals.add(addr)
+                else:
+                    # References into objects can use an address inside that
+                    # object directly instead of loading the base address first.
+                    # Similar to the jumps above, find out if the code
+                    # references an address inside an object and add that
+                    # reference to the dictionary of object references.
+                    i = bisect_right(library.sorted_object_ranges, (addr,))
+                    # lower and upper bound
+                    if i == 0 or i == len(library.sorted_object_ranges) + 1:
+                        continue
+                    start, size = library.sorted_object_ranges[i-1]
+                    # reference goes somewhere close to the target but outside
+                    # known objects
+                    if addr not in range(start, start + size):
+                        continue
+                    if start in library.local_objs:
+                        local_object_refs.add(start)
+                    elif start in library.exported_addrs:
+                        exported_object_refs.add(start)
+                    else:
+                        continue
+                    logging.debug('%s: reference into object! %x -> %x (inside %x:%d)',
+                                  library.fullname, instr.address, addr, start,
+                                  size)
 
     return (calls_to_exports, calls_to_imports, calls_to_locals, indirect_calls,
             imported_object_refs, exported_object_refs, local_object_refs,
@@ -400,6 +424,7 @@ def resolve_calls(store, n_procs=int(multiprocessing.cpu_count() * 1.5)):
     # function boundaries
     for lib in store.get_library_objects():
         lib.sorted_ranges = sorted(lib.ranges.items())
+        lib.sorted_object_ranges = sorted(lib.object_ranges.items())
 
     pool = multiprocessing.Pool(n_procs)
     result = pool.imap_unordered(map_wrapper,

@@ -33,6 +33,7 @@ from elftools.common.utils import struct_parse, parse_cstring_from_stream
 from elftools.construct import Padding, SLInt32, Struct
 from elftools.elf.enums import ENUM_RELOC_TYPE_x64, ENUM_RELOC_TYPE_i386, \
     ENUM_RELOC_TYPE_AARCH64
+from elftools.elf.constants import SH_FLAGS
 from libdebuginfod import DebugInfoD
 
 DEBUG_DIR = os.path.join(os.sep, 'usr', 'lib', 'debug')
@@ -429,6 +430,10 @@ class Library:
             else:
                 addr = self._get_symbol_offset(symbol)
                 if not addr:
+                    continue
+                # If the symbol is in non-allocated section, skip it
+                target_section_flags = self._elffile.get_section(shndx)['sh_flags']
+                if (target_section_flags & SH_FLAGS.SHF_ALLOC) == 0:
                     continue
                 # STB_LOOS objects are of type STB_GNU_UNIQUE for SYSV binaries
                 if symbol_bind in ('STB_GLOBAL', 'STB_WEAK', 'STB_LOOS'):
@@ -999,6 +1004,10 @@ class Library:
             else:
                 addr = self._get_symbol_offset(symbol)
                 if not addr:
+                    continue
+                # If the symbol is in non-allocated section, skip it
+                target_section_flags = self._elffile.get_section(shndx)['sh_flags']
+                if (target_section_flags & SH_FLAGS.SHF_ALLOC) == 0:
                     continue
                 if symbol_bind in ('STB_GLOBAL', 'STB_WEAK', 'STB_LOOS'):
                     name = symbol.name

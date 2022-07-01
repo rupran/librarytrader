@@ -245,6 +245,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib()
         lib.parse_functions()
         lib.sorted_ranges = sorted(lib.ranges.items())
+        lib.sorted_object_ranges = sorted(lib.object_ranges.items())
 
         calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
@@ -270,6 +271,7 @@ class TestLibrary(unittest.TestCase):
         store, lib = create_store_and_lib(TEST_LIB_PLT)
         lib.parse_functions()
         lib.sorted_ranges = sorted(lib.ranges.items())
+        lib.sorted_object_ranges = sorted(lib.object_ranges.items())
 
         calls = collections.defaultdict(set)
         for start, size in lib.ranges.items():
