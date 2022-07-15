@@ -193,6 +193,8 @@ class Runner():
         return self.all_resolved_functions
 
     def _mark_extra_functions_as_used(self):
+        logging.info('Marking extra functions as used from \'%s\'',
+                     self.args.used_functions)
         with open(self.args.used_functions, 'r') as infd:
             for line in infd:
                 path, function = line.strip().split(':')
