@@ -718,8 +718,9 @@ class Library:
             fptr_reloc_type = ENUM_RELOC_TYPE_AARCH64['R_AARCH64_RELATIVE']
             ptr_reloc_type = None
 
+        dynrel_relocations = list(dynrel.iter_relocations())
         sorted_obj_ranges = sorted(self.object_ranges.keys())
-        for reloc in dynrel.iter_relocations():
+        for reloc in dynrel_relocations:
             got_offset = reloc['r_offset'] - self.load_offset
             symbol_idx = reloc['r_info_sym']
             reloc_type = reloc['r_info_type']
@@ -774,7 +775,7 @@ class Library:
         # This needs to be in a separate loop as the other relocation types
         # might have added entries to self.exported_objs, and the relocations
         # processed in this loop might reference such new entries.
-        for reloc in dynrel.iter_relocations():
+        for reloc in dynrel_relocations:
             got_offset = reloc['r_offset'] - self.load_offset
             reloc_type = reloc['r_info_type']
             if reloc_type == fptr_reloc_type:
@@ -807,7 +808,7 @@ class Library:
         def _check_init_fini(target_range, target_functions, name):
             if not target_range:
                 return
-            for reloc in dynrel.iter_relocations():
+            for reloc in dynrel_relocations:
                 if reloc['r_info_type'] == ptr_reloc_type:
                     target_address = reloc['r_offset']
                     if target_address in range(*target_range):
