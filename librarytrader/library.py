@@ -1196,9 +1196,9 @@ class Library:
 
     def find_local_functions(self, requested_pattern):
         retval = set()
-        pattern_string = r'(.*\.c[c]?_|)' + re.escape(requested_pattern)
+        pattern = re.compile(r'(.*\.c[c]?_|)' + re.escape(requested_pattern))
         for addr, names in self.local_functions.items():
-            if any(re.fullmatch(pattern_string, name) for name in names):
+            if any(pattern.fullmatch(name) for name in names):
                 retval.add(addr)
 
         return retval
@@ -1219,11 +1219,11 @@ class Library:
 
     def find_exports_by_pattern(self, requested_pattern):
         retval = set()
-        escaped_pattern = re.escape(requested_pattern)
+        escaped_pattern = re.compile(re.escape(requested_pattern))
         for name, addr in self.exported_names.items():
-            if re.fullmatch(escaped_pattern, name):
+            if escaped_pattern.fullmatch(name):
                 retval.add(addr)
-            elif re.fullmatch(escaped_pattern, name.split('@@')[0]):
+            elif escaped_pattern.fullmatch(name.split('@@')[0]):
                 retval.add(addr)
         return retval
 
