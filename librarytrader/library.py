@@ -494,11 +494,11 @@ class Library:
                     logging.info('\'%s\' is PIE', self.fullname)
                     self.entrypoint = self.elfheader['e_entry']
             elif tag.entry.d_tag == 'DT_INIT_ARRAY':
-                init_array = next(self._elffile.address_offsets(tag.entry.d_ptr))
+                init_array = tag.entry.d_ptr
             elif tag.entry.d_tag == 'DT_INIT_ARRAYSZ':
                 init_arraysz = tag.entry.d_val
             elif tag.entry.d_tag == 'DT_FINI_ARRAY':
-                fini_array = next(self._elffile.address_offsets(tag.entry.d_ptr))
+                fini_array = tag.entry.d_ptr
             elif tag.entry.d_tag == 'DT_FINI_ARRAYSZ':
                 fini_arraysz = tag.entry.d_val
 
@@ -509,8 +509,9 @@ class Library:
             else:
                 fmt = '<Q'
                 pointer_size = 8
-            cur_offset = array
-            while cur_offset < array + array_size:
+            cur_offset = next(self._elffile.address_offsets(array))
+            end_offset = cur_offset + array_size
+            while cur_offset < end_offset:
                 self.fd.seek(cur_offset)
                 read_offset = struct.unpack(fmt, self.fd.read(pointer_size))[0] - self.load_offset
                 if read_offset > 0:
@@ -803,52 +804,34 @@ class Library:
         # Check if any ptr_reloc_type or fptr_reloc_type relocations are written
         # into the INIT_ARRAY address range and note their targets in the list
         # of init functions.
-        if self._init_range:
+        def _check_init_fini(target_range, target_functions, name):
+            if not target_range:
+                return
             for reloc in dynrel.iter_relocations():
                 if reloc['r_info_type'] == ptr_reloc_type:
-                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
-                    if real_offset in range(*self._init_range):
+                    target_address = reloc['r_offset']
+                    if target_address in range(*target_range):
                         symbol_idx = reloc['r_info_sym']
                         symbol = dynsym.get_symbol(symbol_idx)
                         symbol_offset = self._get_symbol_offset(symbol)
-                        if symbol_offset not in self.init_functions:
-                            self.init_functions.append(symbol_offset)
-                        logging.debug('%s: relocation into init: %x -> %s',
-                                      self.fullname, real_offset,
+                        if symbol_offset not in target_functions:
+                            target_functions.append(symbol_offset)
+                        logging.debug('%s: relocation into %s: %x -> %s',
+                                      self.fullname, name, target_address,
                                       self._get_versioned_name(symbol, symbol_idx))
                 elif reloc['r_info_type'] == fptr_reloc_type:
-                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
-                    if real_offset in range(*self._init_range):
+                    target_address = reloc['r_offset']
+                    if target_address in range(*target_range):
                         symbol_addr = self._get_addend(reloc)
                         symbol_offset = symbol_addr - self.load_offset
-                        if symbol_offset not in self.init_functions:
-                            self.init_functions.append(symbol_offset)
-                        logging.debug('%s: RELATIVE relocation into init: %x -> %x/%x',
-                                      self.fullname, real_offset, symbol_addr, symbol_offset)
+                        if symbol_offset not in target_functions:
+                            target_functions.append(symbol_offset)
+                        logging.debug('%s: RELATIVE relocation into %s: %x -> %x/%x',
+                                      self.fullname, name, target_address,
+                                      symbol_addr, symbol_offset)
 
-        # Same for FINI_ARRAY
-        if self._fini_range:
-            for reloc in dynrel.iter_relocations():
-                if reloc['r_info_type'] == ptr_reloc_type:
-                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
-                    if real_offset in range(*self._fini_range):
-                        symbol_idx = reloc['r_info_sym']
-                        symbol = dynsym.get_symbol(symbol_idx)
-                        symbol_offset = self._get_symbol_offset(symbol)
-                        if symbol_offset not in self.fini_functions:
-                            self.fini_functions.append(symbol_offset)
-                        logging.debug('%s: relocation into fini: %x -> %s',
-                                      self.fullname, real_offset,
-                                      self._get_versioned_name(symbol, symbol_idx))
-                elif reloc['r_info_type'] == fptr_reloc_type:
-                    real_offset = next(self._elffile.address_offsets(reloc['r_offset']))
-                    if real_offset in range(*self._fini_range):
-                        symbol_addr = self._get_addend(reloc)
-                        symbol_offset = symbol_addr - self.load_offset
-                        if symbol_offset not in self.fini_functions:
-                            self.fini_functions.append(symbol_offset)
-                        logging.debug('%s: RELATIVE relocation into fini: %x -> %x/%x',
-                                      self.fullname, real_offset, symbol_addr, symbol_offset)
+        _check_init_fini(self._init_range, self.init_functions, 'init')
+        _check_init_fini(self._fini_range, self.fini_functions, 'fini')
 
     def parse_versions(self):
         versions = self._elffile.get_section_by_name('.gnu.version')
