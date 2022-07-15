@@ -183,6 +183,7 @@ information propagation through setting the environment variables below.
 | `FIXUP_FUNCTION_RANGES`       | If set, parsing the ELF files will entail an additional postprocessing step which checks if the gaps between known function boundaries consist of NOPs only. In this case, the `ranges` dictionary entry of the preceding function is updated to include the trailing NOPs. |
 | `MOUNT_PREFIX`                | A path prefix that is removed from all paths generated in the uprobes file generated with the `--uprobe-strings` parameter. This way, the uprobes can be directly copied to the target file system. Additionally, `parse_collected_uprobes.py` respects (i.e., re-appends) this prefix when resolving the probes back to paths in the JSON file. |
 | `TAILOR_BINARIES`             | If set, the transitive call propagation will also follow the control flow in functions in executable files (as checked by `os.access(<path>, X_OK)`) which may lead to eliminated functions in the executable. Otherwise, all local and exported functions in executable files are marked as used by `'BINARY'`.  |
+| `COPIED_BASE`                 | If set, the path to the interpreter from a `PT_INTERP` program header is modified by prepending the value of `COPIED_BASE` to the value in the header. This allows the integrated analysis of the loader for a copied file system tree. |
 
 ## Analyzing a collection of object files
 

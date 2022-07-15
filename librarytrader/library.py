@@ -82,6 +82,10 @@ class Library:
             if interp:
                 self.interpreter = parse_cstring_from_stream(self.fd,
                                                              interp['sh_offset']).decode('utf-8)')
+                copied_base = os.environ.get('COPIED_BASE')
+                if copied_base:
+                    self.interpreter = os.path.abspath(os.path.join(copied_base,
+                                                       self.interpreter.lstrip('/')))
 
 
         self._version_names = {}
