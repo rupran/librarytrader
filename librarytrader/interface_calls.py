@@ -17,8 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with librarytrader.  If not, see <http://www.gnu.org/licenses/>.
 
-from bisect import bisect_right
-from distutils.spawn import find_executable
 import logging
 import multiprocessing
 import os
@@ -26,6 +24,8 @@ import re
 import subprocess
 import sys
 import time
+from bisect import bisect_right
+from distutils.spawn import find_executable
 
 import capstone
 from elftools.common.utils import parse_cstring_from_stream
@@ -36,6 +36,7 @@ from elftools.elf.elffile import ELFFile
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 from librarytrader.library import Library
+
 
 def disassemble_objdump(library, start, length, obj=None):
     disassembly = []
@@ -151,7 +152,10 @@ def _locate_parameter(library, disas, start_idx, target_register, mem_tag):
             elffile = ELFFile(library.fd)
             stroff = next(elffile.address_offsets(straddr))
             strval = parse_cstring_from_stream(library.fd, stroff)
-            retval = strval.decode('utf-8')
+            try:
+                retval = strval.decode('utf-8')
+            except UnicodeDecodeError:
+                return None
             break
     return retval
 
